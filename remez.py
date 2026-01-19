@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -24,7 +25,7 @@ def ppp(c, x):
     return out
 
 
-def odd_remez(q, l, u, tolRemez, tolNewton, alpha=1.0):
+def odd_remez(q, l, u, tolNewton, alpha=1.0):
     """
     TODO: It seems that after just a few guesses the coefficients stio changing at all.
     Need some way of getting out of local minimum
@@ -39,8 +40,11 @@ def odd_remez(q, l, u, tolRemez, tolNewton, alpha=1.0):
         x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
     err = 1000.0
     c = None
+    old_E = np.inf
+    E = 1000
 
-    while err > tolRemez:
+    while np.abs(old_E - E) > 1e-15:
+        old_E = E
         print(f"x: {x}")
         A = np.zeros((q + 2, q + 2))
         for j in range(q + 2):
@@ -87,11 +91,13 @@ def odd_remez(q, l, u, tolRemez, tolNewton, alpha=1.0):
         else:
             print("Implement way to find all points...")
 
-        errList = []
+        """errList = []
         for point in x:
             errList.append(np.abs(p(c, point) - 1))
         err = np.max(errList) - alpha * np.min(errList)
-        print(f"Errors:  {errList}")
+        print(f"Errors:  {errList}")"""
+
+        E = c[-1]
     return c
 
 
@@ -121,9 +127,37 @@ def newton_pol(x, c, tol):
     return x
 
 
+def plot_pol(c):
+    x = np.linspace(0, 1, 100)
+    plt.plot(x, p(c, x))
+    plt.plot(x, 1 + 0 * x)
+
+
+def get_all_coeffs():
+    l = 0.001
+    cushion = 0.02407327424182761
+    u = 1
+    all_coeffs = []
+
+    for i in range(5):
+        c = odd_remez(2, max(l, cushion * u), u, 1e-10)
+        pl = p(c[:-1], l)
+        pu = p(c[:-1], u)
+        rescalar = 2 / (pl + pu)
+        for i in range(len(c[:-1])):
+            c[i] *= rescalar
+
+        l = p(c[:-1], l)
+        u = 2 - l
+        all_coeffs.append(c[:-1])
+        plot_pol(c[:-1])
+    return all_coeffs
+
+
 def main():
-    c = odd_remez(2, 0.001, 1, 1e-10, 1e-10, 1.05)
-    print(c)
+    coeffs = get_all_coeffs()
+    print(coeffs)
+    plt.show()
 
 
 if __name__ == "__main__":
