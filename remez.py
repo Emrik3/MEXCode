@@ -1,5 +1,8 @@
+from itertools import repeat
+
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 
 def p(c, x):
@@ -7,6 +10,15 @@ def p(c, x):
     for i in range(len(c)):
         out += c[i] * x ** (2 * i + 1)
     return out
+
+
+def ptest(c, x):
+    out = 0
+    m = max(c)
+    for i in range(len(c)):
+        c[i] /= 0.01 * m
+        out += c[i] * x ** (2 * i + 1)
+    return out * 0.01 * m
 
 
 # Derivative of polynomial
@@ -45,14 +57,11 @@ def odd_remez(q, l, u, tolNewton, alpha=1.0):
 
     while np.abs(old_E - E) > 1e-15:
         old_E = E
-        print(f"x: {x}")
         A = np.zeros((q + 2, q + 2))
         for j in range(q + 2):
             for i in range(q + 1):
                 A[j, i] = x[j] ** (2 * i + 1)
         A[:, -1] = (-1) ** np.arange(q + 2)
-
-        print(A)
 
         c = np.linalg.solve(A, f)
         # c = [8.28721201814563, -23.595886519098837, 17.300387312530933, 1] # Optimal in PE
@@ -60,12 +69,10 @@ def odd_remez(q, l, u, tolNewton, alpha=1.0):
         x_new = []
         coeffs_for_roots = derivative_coeffs(c[:-1])
         root_guess = np.roots(coeffs_for_roots)
-        print(f"coeffs: {c[:-1]}")
         candidates = []
         for r in root_guess:
             if np.isreal(r):
                 r = r.real
-                print(r)
                 if r > 0:
                     candidates.append(r)
 
@@ -81,12 +88,10 @@ def odd_remez(q, l, u, tolNewton, alpha=1.0):
         if len(x_new) != q + 2:
             raise ValueError(f"Expected {q + 2} extremal points, got {len(x_new)}")
 
-        print("Extremal points:", x_new)
         x = x_new
 
         # Make sure all unique points were found
         if len(x_new) == len(set(x_new)):
-            print("Unique points found")
             x = np.array(x_new)
         else:
             print("Implement way to find all points...")
@@ -133,14 +138,17 @@ def plot_pol(c):
     plt.plot(x, 1 + 0 * x)
 
 
-def get_all_coeffs():
+# Does thsi only work for degree 5, the cushioning and such?
+# Maybe just do any degree not using this?
+def get_all_coeffs(q, T):
     l = 0.001
     cushion = 0.02407327424182761
     u = 1
     all_coeffs = []
 
-    for i in range(5):
-        c = odd_remez(2, max(l, cushion * u), u, 1e-10)
+    for i in range(T):
+        print(i)
+        c = odd_remez(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
         pl = p(c[:-1], l)
         pu = p(c[:-1], u)
         rescalar = 2 / (pl + pu)
@@ -150,14 +158,112 @@ def get_all_coeffs():
         l = p(c[:-1], l)
         u = 2 - l
         all_coeffs.append(c[:-1])
-        plot_pol(c[:-1])
     return all_coeffs
 
 
-def main():
-    coeffs = get_all_coeffs()
-    print(coeffs)
+@torch.compile
+def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
+    assert G.ndim >= 2
+    X = G.bfloat16()  # for speed
+    if G.size(-2) > G.size(-1):
+        X = X.mT  # this reduces FLOPs
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+
+    for a, b, c in coeffs_list:
+        A = X @ X.mT
+        B = b * A + c * A @ A
+        X = a * X + B @ X  # X <- aX + bX ˆ3 + cX ˆ5
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    return X
+
+
+@torch.compile
+def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
+    # TODO: accumulate in 32 bult mult in 16
+    assert G.ndim >= 2
+    X = G.float()  # Keep in float32
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+
+    for c in coeffs_list:
+        c_torch = torch.tensor(c, dtype=torch.float32, device=X.device)
+        I = torch.eye(X.size(-2), dtype=torch.float32, device=X.device)
+
+        A = X @ X.mT
+        B = A @ A
+        C = B @ A
+        D = C @ C
+
+        # PS evaluation
+        X = (
+            c_torch[0] * I
+            + c_torch[1] * A
+            + c_torch[2] * B
+            + (c_torch[3] * I + c_torch[4] * A + c_torch[5] * B) @ C
+            + (c_torch[6] * I + c_torch[7] * A + c_torch[8] * B) @ D
+        ) @ X
+
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    return X.to(G.dtype)
+
+
+def test_approximation():
+    T = 3
+    TPE = 5
+    q = 8
+    qPE = 2
+    coeffs17 = get_all_coeffs(q, T)
+
+    coeffsPE = get_all_coeffs(qPE, TPE)
+    x_plt = np.linspace(0, 1, 1000)
+    x = np.linspace(0, 1, 1000)
+    for i in range(TPE):
+        x = ptest(coeffsPE[i], x)
+    plt.plot(x_plt, x, label="PolarExpress")
+    x = np.linspace(0, 1, 1000)
+    for i in range(T):
+        x = ptest(coeffs17[i], x)
+    plt.plot(x_plt, x, label="New")
+    plt.legend()
     plt.show()
+
+
+def test_polar():
+    T = 3
+    TPE = 5
+    q = 8
+    qPE = 2
+    coeffs17 = get_all_coeffs(q, T)
+    coeffsPE = get_all_coeffs(qPE, TPE)
+    print(coeffs17)
+
+    for i in range(len(coeffsPE)):
+        coeffsPE[i] /= 1.01 ** (2 * i + 1)
+
+    A = torch.abs(torch.randn(50, 30))
+    U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+    polarFactor = U @ Vh
+
+    polarFactorNew = NewPolarExpress(A, T, coeffs17)
+
+    polarFactorPE = PolarExpress(A, TPE, coeffsPE)
+
+    diffPE = polarFactor - polarFactorPE
+    diffNew = polarFactor - polarFactorNew
+    normFactor = polarFactor.norm(dim=(-2, -1), keepdim=True)
+
+    errPE = diffPE.norm(dim=(-2, -1), keepdim=True) / normFactor
+    errNew = diffNew.norm(dim=(-2, -1), keepdim=True) / normFactor
+
+    print(f"Polar Express error: {errPE}")
+    print(f"New Express error: {errNew}")
+
+
+def main():
+    test_polar()
 
 
 if __name__ == "__main__":
