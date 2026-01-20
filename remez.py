@@ -1,3 +1,4 @@
+import time
 from itertools import repeat
 
 import matplotlib.pyplot as plt
@@ -37,12 +38,7 @@ def ppp(c, x):
     return out
 
 
-def odd_remez(q, l, u, tolNewton, alpha=1.0):
-    """
-    TODO: It seems that after just a few guesses the coefficients stio changing at all.
-    Need some way of getting out of local minimum
-    Do a bit of math about this and find better source on algorithm...
-    """
+def odd_remezOne(q, l, u, tolNewton, alpha=1.0):
     x = np.zeros(q + 2)
     f = np.ones(q + 2)
     n = q + 2
@@ -65,7 +61,6 @@ def odd_remez(q, l, u, tolNewton, alpha=1.0):
 
         c = np.linalg.solve(A, f)
         # c = [8.28721201814563, -23.595886519098837, 17.300387312530933, 1] # Optimal in PE
-        # Compute all extremes of error function, use newton here?
         x_new = []
         coeffs_for_roots = derivative_coeffs(c[:-1])
         root_guess = np.roots(coeffs_for_roots)
@@ -94,13 +89,8 @@ def odd_remez(q, l, u, tolNewton, alpha=1.0):
         if len(x_new) == len(set(x_new)):
             x = np.array(x_new)
         else:
-            print("Implement way to find all points...")
-
-        """errList = []
-        for point in x:
-            errList.append(np.abs(p(c, point) - 1))
-        err = np.max(errList) - alpha * np.min(errList)
-        print(f"Errors:  {errList}")"""
+            print("Error: Counld not find all points")
+            break
 
         E = c[-1]
     return c
@@ -148,7 +138,7 @@ def get_all_coeffs(q, T):
 
     for i in range(T):
         print(i)
-        c = odd_remez(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
+        c = odd_remezOne(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
         pl = p(c[:-1], l)
         pu = p(c[:-1], u)
         rescalar = 2 / (pl + pu)
@@ -182,7 +172,7 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.float()  # Keep in float32
+    X = G.float()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
@@ -196,7 +186,7 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
         C = B @ A
         D = C @ C
 
-        # PS evaluation
+        # PS evaluation, check what happens with stability when using better eval scheme. Also maybe do the math on the cancellation?
         X = (
             c_torch[0] * I
             + c_torch[1] * A
@@ -215,20 +205,55 @@ def test_approximation():
     TPE = 5
     q = 8
     qPE = 2
-    coeffs17 = get_all_coeffs(q, T)
 
+    coeffs17 = get_all_coeffs(q, T)
     coeffsPE = get_all_coeffs(qPE, TPE)
+
     x_plt = np.linspace(0, 1, 1000)
     x = np.linspace(0, 1, 1000)
     for i in range(TPE):
-        x = ptest(coeffsPE[i], x)
-    plt.plot(x_plt, x, label="PolarExpress")
+        x = p(coeffsPE[i], x)
+    plt.plot(x_plt, x, label="PolarExpress (q = 2, T = 5)")
+
     x = np.linspace(0, 1, 1000)
     for i in range(T):
-        x = ptest(coeffs17[i], x)
-    plt.plot(x_plt, x, label="New")
+        x = p(coeffs17[i], x)
+    plt.plot(x_plt, x, label="Degree 17 (q = 8, T = 3)")
+
+    """x = np.linspace(0, 1, 1000)
+    for i in range(T2):
+        x = p(coeffs2[i], x)
+    plt.plot(x_plt, x, label="q = 8, T = 2")"""
+
     plt.legend()
     plt.show()
+
+
+def time_test():
+    T = 3
+    TPE = 5
+    q = 8
+    qPE = 2
+    coeffs17 = get_all_coeffs(q, T)
+    coeffsPE = get_all_coeffs(qPE, TPE)
+    print(coeffs17)
+
+    for i in range(len(coeffsPE)):
+        coeffsPE[i] /= 1.01 ** (2 * i + 1)
+
+    A = torch.abs(torch.randn(50257, 768))
+
+    start = time.perf_counter()
+    polarFactorNew = NewPolarExpress(A, T, coeffs17)
+    end = time.perf_counter()
+    elapsed = end - start
+    print(f"Time new version: {elapsed:.6f} seconds")
+
+    start = time.perf_counter()
+    polarFactorPE = PolarExpress(A, TPE, coeffsPE)
+    end = time.perf_counter()
+    elapsed = end - start
+    print(f"Time PE: {elapsed:.6f} seconds")
 
 
 def test_polar():
@@ -243,7 +268,7 @@ def test_polar():
     for i in range(len(coeffsPE)):
         coeffsPE[i] /= 1.01 ** (2 * i + 1)
 
-    A = torch.abs(torch.randn(50, 30))
+    A = torch.abs(torch.randn(5000, 70))
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
@@ -260,6 +285,18 @@ def test_polar():
 
     print(f"Polar Express error: {errPE}")
     print(f"New Express error: {errNew}")
+
+
+"""
+q=10, T = 3:
+    [array([ 3.13422195e+01, -1.40818285e+03,  2.65294365e+04, -2.46146558e+05,
+            1.28959429e+06, -4.11482454e+06,  8.29014494e+06, -1.05943865e+07,
+            8.32597575e+06, -3.66978039e+06,  6.94272387e+05]), array([ 1.29332197e+01, -1.49932190e+02,  7.28824194e+02, -1.74480720e+03,
+            2.35866197e+03, -1.94188205e+03,  1.00946804e+03, -3.32862742e+02,
+            6.74968396e+01, -7.67621794e+00,  3.74710650e-01]), array([ 4.67319285e+00, -2.27857582e+01,  8.05002795e+01, -1.81091626e+02,
+            2.65646905e+02, -2.59338586e+02,  1.69450202e+02, -7.31059510e+01,
+            1.99610970e+01, -3.12226706e+00,  2.13017610e-01])]
+"""
 
 
 def main():
