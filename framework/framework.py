@@ -1,33 +1,23 @@
 import time
 from itertools import repeat
-
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy.optimize import brentq
+from evalPol import sastre8, eval17, eval9
 
 
 def p(c, x):
     out = 0
     for i in range(len(c)):
-        out += c[i] * x ** (2 * i)
+        out += c[i] * x ** (2 * i + 1)
     return out
-
-
-def ptest(c, x):
-    out = 0
-    m = max(c)
-    for i in range(len(c)):
-        c[i] /= 0.01 * m
-        out += c[i] * x ** (2 * i)
-    return out * 0.01 * m
 
 
 # Derivative of polynomial
 def pp(c, x):
     out = 0
-    for i in range(1, len(c)):
-        out += c[i] * (2 * i) * x ** (2 * i - 1)
+    for i in range(len(c)):
+        out += c[i] * (2 * i + 1) * x ** (2 * i)
     return out
 
 
@@ -35,56 +25,44 @@ def pp(c, x):
 def ppp(c, x):
     out = 0
     for i in range(1, len(c)):
-        out += c[i] * (2 * i) * (2 * i - 1) * x ** (2 * i - 2)
+        out += c[i] * (2 * i + 1) * (2 * i) * x ** (2 * i - 1)
     return out
 
 
-def func(x, l):
-    return x ** (-0.5) - l ** (-0.5)
-
-
-def even_remez(q, l, u, tolNewton, alpha=1.0):
-    """The pan here is to offset the inv sqrt function by some nuber, then calculate the approxiḿation and later on add that as the leading coefficiant.
-    Also, not sure this implementation is completely correct"""
-    x = np.zeros(q + 1)
-    f = np.zeros(q + 1)
-    n = q + 1
+def odd_remez(q, l, u, tolNewton):
+    x = np.zeros(q + 2)
+    f = np.ones(q + 2)
+    n = q + 2
 
     # Calculate initial guess of points as Chebyshev points
     for i in range(n):
-        x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos(
-            (2 * i) * np.pi / (2 * n)
-        )  # Not correct?
-
+        x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
     x = np.array(sorted(x))
-
-    for i in range(n):
-        f[i] = func(x[i], l)
-
-    print(f)
-    err = 1000.0
-    c = None
     old_E = np.inf
     E = 1000
 
     while np.abs(old_E - E) > 1e-15:
         old_E = E
-        A = np.zeros((q + 1, q + 1))
-        for j in range(q + 1):
-            for i in range(q):
-                A[j, i] = x[j] ** (2 * i + 2)
-        A[:, -1] = (-1) ** np.arange(q + 1)
+        A = np.zeros((n, n))
+        for j in range(n):
+            for i in range(n-1):
+                A[j, i] = x[j] ** (2 * i + 1)
+        A[:, -1] = (-1) ** np.arange(n)
 
         c = np.linalg.solve(A, f)
-        # c = [8.28721201814563, -23.595886519098837, 17.300387312530933, 1] # Optimal in PE
+
         x_new = []
+        coeffs_for_roots = derivative_coeffs(c[:-1])
+        root_guess = np.roots(coeffs_for_roots)
+        candidates = []
+        for r in root_guess:
+            if np.isreal(r):
+                r = r.real
+                if r > 0:
+                    candidates.append(r)
 
-        xs = np.linspace(l, u, 200)
-
-        for a, b in zip(xs[:-1], xs[1:]):
-            if error_derivative(a, c) * error_derivative(b, c) < 0:
-                r = brentq(error_derivative, a, b, args=(c,))
-                x_new.append(r)
+        for guess in candidates:  # If they are too close we might have problems
+            x_new.append(newton_pol(guess, c[:-1], tolNewton))
 
         # Always include endpoints
         x_new = [l] + x_new + [u]
@@ -92,15 +70,10 @@ def even_remez(q, l, u, tolNewton, alpha=1.0):
         # Sort for consistency
         x_new = np.array(sorted(x_new))
 
-        plot_pol(c[:-1])
-
-        if len(x_new) != q + 1:
-            raise ValueError(f"Expected {q + 1} extremal points, got {len(x_new)}")
+        if len(x_new) != n:
+            raise ValueError(f"Expected {n} extremal points, got {len(x_new)}")
 
         x = x_new
-
-        for i in range(len(x)):
-            f[i] = func(x[i], l)
 
         # Make sure all unique points were found
         if len(x_new) == len(set(x_new)):
@@ -111,16 +84,6 @@ def even_remez(q, l, u, tolNewton, alpha=1.0):
 
         E = c[-1]
     return c
-
-
-def error_derivative(a, c):
-    q = len(c) - 1
-    coeffs = np.zeros(2 * q + 1)
-    p = 0
-
-    for i in range(1, len(c)):
-        p += c[i - 1] * (2 * i) * a ** (2 * i - 1)
-    return p + 0.5 * a ** (-1.5)
 
 
 def derivative_coeffs(c):
@@ -135,7 +98,7 @@ def derivative_coeffs(c):
 
     for i, ci in enumerate(c):
         power = 2 * i
-        coeffs[2 * q - 1 - power] = ci * (2 * i)
+        coeffs[2 * q - power] = ci * (2 * i + 1)
 
     return coeffs
 
@@ -150,14 +113,12 @@ def newton_pol(x, c, tol):
 
 
 def plot_pol(c):
-    l = 0.001
     x = np.linspace(0, 1, 100)
     plt.plot(x, p(c, x))
-    plt.plot(x, func(x, l))
-    plt.show()
+    plt.plot(x, 1 + 0 * x)
 
 
-# Does thsi only work for degree 5, the cushioning and such?
+# Does this only best for degree 5, the cushioning and such?
 # Maybe just do any degree not using this?
 def get_all_coeffs_different_degrees(q_list, T):
     l = 0.001
@@ -168,7 +129,7 @@ def get_all_coeffs_different_degrees(q_list, T):
     for i in range(T):
         q = q_list[i]
         print(i)
-        c = even_remez(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
+        c = odd_remez(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
         pl = p(c[:-1], l)
         pu = p(c[:-1], u)
         rescalar = 2 / (pl + pu)
@@ -202,62 +163,42 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.bfloat16()
+    X = G
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
 
     for c in coeffs_list:
-        c_torch = torch.tensor(c, dtype=torch.float32, device=X.device).bfloat16()
-        I = torch.eye(X.size(-2), dtype=torch.float32, device=X.device).bfloat16()
-        C = X @ X.mT
-        A = C * 0
-        B = I
-        for coeff in c:
-            A = A + coeff * B
-            B = B @ C
-        X = A @ X
+        X = eval9(X, c)
 
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G.dtype)
 
 
-def test_approximation():
-    T = 4
-    TPE = 5
-    q = [
-        2,
-        2,
-        2,
-        2,
-    ]  # tHE ORDER DOES NOT SEEMS TO MATTER, INTRESTING. But seems to have an effect on the matrices but not on the plotting.
-    qPE = [2, 2, 2, 2, 2]
-
+def test_approximation(q):
+    T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T)
     print(coeffs17)
 
     x_plt = np.linspace(0, 1, 1000)
 
     x = np.linspace(0, 1, 1000)
+    tot_degree = 1
     for i in range(T):
         x = p(coeffs17[i], x)
-    plt.plot(x_plt, x_plt * x, label="Degree 17 (q = 4, T = 4)")
+        tot_degree *= 2*q[i]+1
+    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2*np.array(q)+1}")
 
-    """x = np.linspace(0, 1, 1000)
-    for i in range(T2):
-        x = p(coeffs2[i], x)
-    plt.plot(x_plt, x, label="q = 8, T = 2")"""
 
     plt.legend()
-    plt.show()
 
 
 def test_polar():
-    T = 4
-    TPE = 5
-    q = [4, 4, 2, 2]
-    qPE = [2, 2, 2, 2, 2]
+    q = [4, 4, 4, 4]
+    qPE = [2, 2, 2, 2, 2, 2]
+    T = len(q)
+    TPE = len(qPE)
     coeffs17 = get_all_coeffs_different_degrees(q, T)
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
     print(coeffs17)
@@ -269,6 +210,7 @@ def test_polar():
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
+    
     polarFactorNew = NewPolarExpress(A, T, coeffs17)
 
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
@@ -284,20 +226,9 @@ def test_polar():
     print(f"New Express error: {errNew}")
 
 
-"""
-q=10, T = 3:
-    [array([ 3.13422195e+01, -1.40818285e+03,  2.65294365e+04, -2.46146558e+05,
-            1.28959429e+06, -4.11482454e+06,  8.29014494e+06, -1.05943865e+07,
-            8.32597575e+06, -3.66978039e+06,  6.94272387e+05]), array([ 1.29332197e+01, -1.49932190e+02,  7.28824194e+02, -1.74480720e+03,
-            2.35866197e+03, -1.94188205e+03,  1.00946804e+03, -3.32862742e+02,
-            6.74968396e+01, -7.67621794e+00,  3.74710650e-01]), array([ 4.67319285e+00, -2.27857582e+01,  8.05002795e+01, -1.81091626e+02,
-            2.65646905e+02, -2.59338586e+02,  1.69450202e+02, -7.31059510e+01,
-            1.99610970e+01, -3.12226706e+00,  2.13017610e-01])]
-"""
-
 
 def main():
-    test_approximation()
+    test_polar()
 
 
 if __name__ == "__main__":
