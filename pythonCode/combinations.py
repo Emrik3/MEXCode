@@ -1,8 +1,11 @@
 from itertools import combinations_with_replacement
 import matplotlib.pyplot as plt
 
-degree_mults = {2: 3, 3: 5, 4: 9}
-dof = {2: 2, 3: 3, 4: 5}
+# degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 31} # Degree 5 and 6 mults from sastre
+# dof = {2: 2, 3: 3, 4: 5, 5: 9, 6: 16}
+
+degree_mults = {2: 3, 3: 5, 4: 9, 5: 17}
+dof = {2: 2, 3: 3, 4: 5, 5: 9}
 
 def bar_plot_dof(target_degree):
 
@@ -76,63 +79,82 @@ def bar_plot_dof(target_degree):
     plt.tight_layout()
     plt.show()
 
+def bar_plot_degree(target_degree):
 
-def bar_plot_combinations(target_degree):
-    
-    def combinations(total_degree, degree_mults):
+    def combinations(total_degree):
         degrees = sorted(degree_mults.keys())
         results = []
         max_len = total_degree // min(degrees)
         for r in range(1, max_len + 1):
             for comb in combinations_with_replacement(degrees, r):
-                if sum(comb) == total_degree:
+                if sum(comb) <= total_degree:
                     results.append(list(comb))
         return results
 
-    def achieved_degree(combo, degree_mults):
+    def achieved_degree(combo):
         prod = 1
         for d in combo:
-            prod *= degree_mults[d]
+            prod *= degree_mults[d] + 1
         return prod
 
-    combos = combinations(target_degree, degree_mults)
-    # Pair combinations with achieved degree
-    combo_values = [
-        (c, achieved_degree(c, degree_mults)) for c in combos
+    def achieved_dof(combo):
+        return sum(dof[d] for d in combo)
+
+    combos = combinations(target_degree)
+
+    # (combo, achieved degree, dof)
+    combo_data = [
+        (c, achieved_degree(c), achieved_dof(c)) for c in combos
     ]
 
-    # Sort by achieved degree (ascending)
-    combo_values.sort(key=lambda x: x[1])
+    # Sort by achieved degree
+    combo_data.sort(key=lambda x: x[1])
 
-    # Unpack after sorting
-    labels = [str(c) for c, _ in combo_values]
-    values = [v for _, v in combo_values]
+    labels = [str(c) for c, _, _ in combo_data]
+    degree_values = [deg for _, deg, _ in combo_data]
+    dof_values = [d for _, _, d in combo_data]
+    total_mults = [sum(c) for c, _, _ in combo_data]
+
+    # Color map by total degree sum (same logic as DoF plot)
+    unique_totals = sorted(set(total_mults))
+    cmap = plt.cm.get_cmap("tab20")
+    color_map = {t: cmap(i % 20) for i, t in enumerate(unique_totals)}
+    colors = [color_map[t] for t in total_mults]
 
     plt.figure()
-    bars = plt.bar(range(len(values)), values)
+    bars = plt.bar(range(len(degree_values)), degree_values, color=colors)
 
     plt.xticks(range(len(labels)), labels, rotation=90)
-    plt.ylabel("Achieved Total Degree (Product)")
+    plt.ylabel("Achieved Degree (Product)")
     plt.xlabel("Combinations of Degrees")
-    plt.title(f"All combinations summing to degree {target_degree}")
+    plt.title(f"Achieved Degree vs Combinations (sum ≤ {target_degree})")
 
-    # Add value labels above bars
-    for bar, value in zip(bars, values):
+    # Annotate DoF above each bar
+    for bar, d in zip(bars, dof_values):
         plt.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height(),
-            str(value),
+            f"{d}",
             ha="center",
             va="bottom",
             fontsize=8,
             rotation=45
         )
 
+    # Legend (same semantic meaning as DoF plot)
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=color_map[t], label=f"Total sum: {t}")
+        for t in unique_totals
+    ]
+    plt.legend(handles=legend_elements, loc="best")
+
     plt.tight_layout()
     plt.show()
 
+
 def main():
-    bar_plot_dof(15)
+    bar_plot_degree(15)
 
 
 if __name__ == "__main__":

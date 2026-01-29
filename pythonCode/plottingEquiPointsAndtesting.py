@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from evalPol import eval3, eval5, eval9, eval17, sastre8
-from sympy.series.approximants import approximants
 
 
 def p(c, x):
@@ -85,8 +84,7 @@ def odd_remez(q, l, u, tol):
 
         E = c[-1]
     print(f"E = {E}")
-    print(x)
-    return c
+    return c, x
 
 
 def derivative_coeffs(c):
@@ -129,23 +127,23 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
     cushion = 0.02407327424182761
     u = 1
     all_coeffs = []
-    eps = 1e-10
+    all_x = []
 
     for i in range(T):
         q = q_list[i]
         print(i)
-        c = odd_remez(q, max(l, cushion * u), u, 1e-8)  # Make  more exact?
+        c, x = odd_remez(q, max(l, cushion * u), u, 1e-8)  # Make  more exact?
+        all_x.append(x)
         pl = p(c[:-1], l)
         pu = p(c[:-1], u)
         rescalar = 2 / (pl + pu)
-        print(f"Rescalar: {rescalar}")
         for i in range(len(c[:-1])):
             c[i] *= rescalar
 
         l = p(c[:-1], l)
         u = 2 - l
         all_coeffs.append(c[:-1])
-    return all_coeffs
+    return all_coeffs, all_x
 
 
 @torch.compile
@@ -193,68 +191,21 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 
 def test_approximation(q, l=0.001):
     T = len(q)
-    coeffs17 = get_all_coeffs_different_degrees(q, T, l)
+    coeffs17, x = get_all_coeffs_different_degrees(q, T, l)
+    print(x)
 
     x_plt = np.linspace(l, 1, 1000)
 
-    x = np.linspace(l, 1, 1000)
+    xx = np.linspace(l, 1, 1000)
     tot_degree = 1
     for i in range(T):
-        x = p(coeffs17[i], x)
-        # x = x + l * (x - 1.06)
+        xx = p(coeffs17[i], xx)
         tot_degree *= 2 * q[i] + 1
-    print(f" min: {min(x)},  max: {max(x)}")
-
-    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
+    plt.plot(x_plt, xx, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
+    plt.scatter(x[0], p(coeffs17[0], x[0]))
+    plt.plot(x_plt, 0 * x_plt + 1, "g--")
 
     plt.legend()
-
-
-def interpolateTest(x, y):
-    A = np.array([[x[i] ** (2 * j + 1) for j in range(3)] for i in range(4)])
-
-    print(A)
-    f = np.array(y)
-    c, residuals, rank, s = np.linalg.lstsq(A, f, rcond=None)
-    return c
-
-
-def plot_all(q, l=0.001):
-    T = len(q)
-    coeffs17 = get_all_coeffs_different_degrees(q, T, l)
-    x_plt = np.linspace(l, 1, 10000)
-
-    x = np.linspace(l, 1, 10000)
-    tot_degree = 1
-    eps = 0.001
-
-    ep2 = np.array([0.04794705, 0.74936796, 1.63851199, 1.99171281])
-    y = np.array([min(ep2), max(ep2) + eps, min(ep2) - eps, max(ep2)])
-    ep1 = np.array([0.02407327, 0.37624298, 0.82266478, 1])
-
-    coeffs17[0] = interpolateTest(ep1, y)
-    print(coeffs17[0])
-
-    for i in range(T):
-        x = p(coeffs17[i], x)
-        # x = x + l * (x - 1.06)
-        tot_degree *= 2 * q[i] + 1
-
-    ep = [0.04794705, 0.74936796, 1.63851199, 1.99171281]
-
-    xplt2 = np.linspace(l, 2, 10000)
-
-    for i in range(len(ep)):
-        plt.plot(xplt2, 0 * xplt2 + ep[i])
-    print(
-        f"New min: {min(x)}, new max: {max(x)}"
-    )  # It seems to work, i get larger l and smaller u? Double check these results
-    plt.plot(x_plt, p(coeffs17[0], x_plt), label="P1")
-    plt.plot(xplt2, p(coeffs17[1], xplt2), label="P2")
-    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
-
-    plt.legend()
-    plt.show()
 
 
 def test_polar():
@@ -299,12 +250,13 @@ def test_polar():
 def approxs():
     test_approximation([2, 2], 0.001)
 
+    plt.show()
+
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
     approxs()
-    plot_all([2, 2])
 
 
 if __name__ == "__main__":

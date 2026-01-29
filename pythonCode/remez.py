@@ -4,6 +4,7 @@ from itertools import repeat
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from evalPol import eval3, eval5, eval9, eval17, sastre8
 
 
 def p(c, x):
@@ -11,15 +12,6 @@ def p(c, x):
     for i in range(len(c)):
         out += c[i] * x ** (2 * i + 1)
     return out
-
-
-def ptest(c, x):
-    out = 0
-    m = max(c)
-    for i in range(len(c)):
-        c[i] /= 0.01 * m
-        out += c[i] * x ** (2 * i + 1)
-    return out * 0.01 * m
 
 
 # Derivative of polynomial
@@ -38,62 +30,81 @@ def ppp(c, x):
     return out
 
 
-def odd_remezOne(q, l, u, tolNewton, alpha=1.0):
+def odd_remez(q, l, u, tol):
     x = np.zeros(q + 2)
     f = np.ones(q + 2)
     n = q + 2
-
-    # Calculate initial guess of points as Chebyshev points
-    for i in range(n):
-        x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
-    err = 1000.0
-    c = None
     old_E = np.inf
     E = 1000
+    eps = 1.11 * 10 ** (-16)
 
-    while np.abs(old_E - E) > 1e-15:
-        old_E = E
-        A = np.zeros((q + 2, q + 2))
-        for j in range(q + 2):
-            for i in range(q + 1):
-                A[j, i] = x[j] ** (2 * i + 1)
-        A[:, -1] = (-1) ** np.arange(q + 2)
+    if q == 1:
+        x = np.array([l, (u - l) / 2, u])
+        print(l / u)
+        if l / u >= 1 - eps:
+            return np.array([1.5, -0.5, 0.0])
 
-        c = np.linalg.solve(A, f)
-        # c = [8.28721201814563, -23.595886519098837, 17.300387312530933, 1] # Optimal in PE
-        x_new = []
-        coeffs_for_roots = derivative_coeffs(c[:-1])
-        root_guess = np.roots(coeffs_for_roots)
-        candidates = []
-        for r in root_guess:
-            if np.isreal(r):
-                r = r.real
-                if r > 0:
-                    candidates.append(r)
+        while np.abs(np.abs(old_E) - np.abs(E)) > tol:
+            old_E = E
 
-        for guess in candidates:  # If they are too close we might have problems
-            x_new.append(newton_pol(guess, c[:-1], tolNewton))
+            A = np.zeros((n, n))
+            for j in range(n):
+                for i in range(n - 1):
+                    A[j, i] = x[j] ** (2 * i + 1)
+            A[:, -1] = (-1) ** np.arange(n)
+            c = np.linalg.solve(A, f)
+            x[1] = np.sqrt(-c[0] / (3 * c[1]))
+            E = c[-1]
+            print(c)
+        return c
+    else:
+        # Calculate initial guess of points as Chebyshev points
+        for i in range(n):
+            x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
+        x = np.array(sorted(x))
 
-        # Always include endpoints
-        x_new = [l] + x_new + [u]
+        while np.abs(np.abs(old_E) - np.abs(E)) > tol:
+            old_E = E
+            A = np.zeros((n, n))
+            for j in range(n):
+                for i in range(n - 1):
+                    A[j, i] = x[j] ** (2 * i + 1)
+            A[:, -1] = (-1) ** np.arange(n)
+            c = np.linalg.solve(A, f)
 
-        # Sort for consistency
-        x_new = np.array(sorted(x_new))
+            x_new = []
+            coeffs_for_roots = derivative_coeffs(c[:-1])
+            root_guess = np.roots(coeffs_for_roots)
+            candidates = []
+            for r in root_guess:
+                if np.isreal(r):
+                    r = r.real
+                    if r > 0:
+                        candidates.append(r)
 
-        if len(x_new) != q + 2:
-            raise ValueError(f"Expected {q + 2} extremal points, got {len(x_new)}")
+            for guess in candidates:  # If they are too close we might have problems
+                x_new.append(newton_pol(guess, c[:-1], 1e-8))
 
-        x = x_new
+            # Always include endpoints
+            x_new = [l] + x_new + [u]
 
-        # Make sure all unique points were found
-        if len(x_new) == len(set(x_new)):
-            x = np.array(x_new)
-        else:
-            print("Error: Counld not find all points")
-            break
+            # Sort for consistency
+            x_new = np.array(sorted(x_new))
 
-        E = c[-1]
-    return c
+            if len(x_new) != n:
+                raise ValueError(f"Expected {n} extremal points, got {len(x_new)}")
+
+            x = x_new
+
+            # Make sure all unique points were found
+            if len(x_new) == len(set(x_new)):
+                x = np.array(x_new)
+            else:
+                print("Error: Could not find all points")
+                break
+
+            E = c[-1]
+        return c
 
 
 def derivative_coeffs(c):
@@ -117,8 +128,10 @@ def newton_pol(x, c, tol):
     err = 100.0
     while err > tol:
         x_new = x - pp(c, x) / ppp(c, x)
+
         err = np.abs(x_new - x)
         x = x_new
+
     return x
 
 
@@ -128,22 +141,18 @@ def plot_pol(c):
     plt.plot(x, 1 + 0 * x)
 
 
-# Does thsi only work for degree 5, the cushioning and such?
+# Does this only best for degree 5, the cushioning and such?
 # Maybe just do any degree not using this?
-def get_all_coeffs(q, T):
+def get_all_coeffs_different_degrees(q_list, T):
     l = 0.001
     cushion = 0.02407327424182761
     u = 1
     all_coeffs = []
 
     for i in range(T):
+        q = q_list[i]
         print(i)
-        c = odd_remezOne(q, max(l, cushion * u), u, 1e-10)  # Make  more exact
-        pl = p(c[:-1], l)
-        pu = p(c[:-1], u)
-        rescalar = 2 / (pl + pu)
-        for i in range(len(c[:-1])):
-            c[i] *= rescalar
+        c = odd_remez(q, l, u, 1e-10)  # Make  more exact?
 
         l = p(c[:-1], l)
         u = 2 - l
@@ -172,98 +181,62 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.float()
+    X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
 
     for c in coeffs_list:
-        c_torch = torch.tensor(c, dtype=torch.float32, device=X.device)
-        I = torch.eye(X.size(-2), dtype=torch.float32, device=X.device)
-
-        A = X @ X.mT
-        B = A @ A
-        C = B @ A
-        D = C @ C
-
-        # PS evaluation, check what happens with stability when using better eval scheme. Also maybe do the math on the cancellation?
-        X = (
-            c_torch[0] * I
-            + c_torch[1] * A
-            + c_torch[2] * B
-            + (c_torch[3] * I + c_torch[4] * A + c_torch[5] * B) @ C
-            + (c_torch[6] * I + c_torch[7] * A + c_torch[8] * B) @ D
-        ) @ X
+        if len(c) == 2:
+            X = eval3(X, c)
+        elif len(c) == 3:
+            X = eval5(X, c)
+        elif len(c) == 5:
+            X = eval9(X, c)
+        elif len(c) == 9:
+            X = eval17(X, c)
+        else:
+            raise NotImplementedError("This mult not impl!")
 
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G.dtype)
 
 
-def test_approximation():
-    T = 3
-    TPE = 5
-    q = 4
-    qPE = 2
+def divDiff():
+    pass
 
-    coeffs17 = get_all_coeffs(q, T)
-    coeffsPE = get_all_coeffs(qPE, TPE)
+
+def interpError():
+    """Assert that this is the same as the E from remez."""
+    pass
+
+
+def test_approximation(q):
+    T = len(q)
+    coeffs17 = get_all_coeffs_different_degrees(q, T)
     print(coeffs17)
 
     x_plt = np.linspace(0, 1, 1000)
-    x = np.linspace(0, 1, 1000)
-    for i in range(TPE):
-        x = p(coeffsPE[i], x)
-    plt.plot(x_plt, x, label="PolarExpress (q = 2, T = 5)")
 
     x = np.linspace(0, 1, 1000)
+    tot_degree = 1
     for i in range(T):
         x = p(coeffs17[i], x)
-    plt.plot(x_plt, x, label="Degree 17 (q = 4, T = 4)")
+        tot_degree *= 2 * q[i] + 1
 
-    """x = np.linspace(0, 1, 1000)
-    for i in range(T2):
-        x = p(coeffs2[i], x)
-    plt.plot(x_plt, x, label="q = 8, T = 2")"""
+    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
 
     plt.legend()
-    plt.show()
-
-
-def time_test():
-    T = 3
-    TPE = 5
-    q = 8
-    qPE = 2
-    coeffs17 = get_all_coeffs(q, T)
-    coeffsPE = get_all_coeffs(qPE, TPE)
-    print(coeffs17)
-
-    for i in range(len(coeffsPE)):
-        coeffsPE[i] /= 1.01 ** (2 * i + 1)
-
-    A = torch.abs(torch.randn(50257, 768))
-
-    start = time.perf_counter()
-    polarFactorNew = NewPolarExpress(A, T, coeffs17)
-    end = time.perf_counter()
-    elapsed = end - start
-    print(f"Time new version: {elapsed:.6f} seconds")
-
-    start = time.perf_counter()
-    polarFactorPE = PolarExpress(A, TPE, coeffsPE)
-    end = time.perf_counter()
-    elapsed = end - start
-    print(f"Time PE: {elapsed:.6f} seconds")
 
 
 def test_polar():
-    T = 3
-    TPE = 5
-    q = 8
-    qPE = 2
-    coeffs17 = get_all_coeffs(q, T)
-    coeffsPE = get_all_coeffs(qPE, TPE)
+    q = [2, 2, 2, 8]
+    qPE = [2, 2, 2, 2, 2]
+    T = len(q)
+    TPE = len(qPE)
+    coeffs17 = get_all_coeffs_different_degrees(q, T)
+    coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
     print(coeffs17)
 
     for i in range(len(coeffsPE)):
@@ -273,7 +246,15 @@ def test_polar():
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
-    polarFactorNew = NewPolarExpress(A, T, coeffs17)
+    sastreCoeffs = []
+
+    for i in range(len(coeffs17)):
+        if len(coeffs17[i]) == 9:
+            sastreCoeffs.append(sastre8(coeffs17[i]))
+        else:
+            sastreCoeffs.append(coeffs17[i])
+
+    polarFactorNew = NewPolarExpress(A, T, sastreCoeffs)
 
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
 
@@ -288,20 +269,15 @@ def test_polar():
     print(f"New Express error: {errNew}")
 
 
-"""
-q=10, T = 3:
-    [array([ 3.13422195e+01, -1.40818285e+03,  2.65294365e+04, -2.46146558e+05,
-            1.28959429e+06, -4.11482454e+06,  8.29014494e+06, -1.05943865e+07,
-            8.32597575e+06, -3.66978039e+06,  6.94272387e+05]), array([ 1.29332197e+01, -1.49932190e+02,  7.28824194e+02, -1.74480720e+03,
-            2.35866197e+03, -1.94188205e+03,  1.00946804e+03, -3.32862742e+02,
-            6.74968396e+01, -7.67621794e+00,  3.74710650e-01]), array([ 4.67319285e+00, -2.27857582e+01,  8.05002795e+01, -1.81091626e+02,
-            2.65646905e+02, -2.59338586e+02,  1.69450202e+02, -7.31059510e+01,
-            1.99610970e+01, -3.12226706e+00,  2.13017610e-01])]
-"""
+def approxs():
+    test_approximation([2, 2, 2, 2, 2])
+    plt.show()
 
 
 def main():
-    test_approximation()
+    # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
+    # TODO: Have some issues when using degree 3, very unstable, why is this?
+    approxs()
 
 
 if __name__ == "__main__":

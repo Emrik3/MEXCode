@@ -272,8 +272,28 @@ q=10, T = 3:
 """
 
 
+def n_zeros():
+    q = [2]
+    T = len(q)
+
+    coeffs17 = get_all_coeffs_different_degrees(q, T)
+    x = np.linspace(0, 1, 10000)
+    for i in range(T):
+        x = p(coeffs17[i], x)
+
+    x = x - 1
+    change = 1
+    count = 0
+    for i in range(1, len(x)):
+        change = x[i - 1] * x[i]
+        print(change)
+        if change < 0:
+            count += 1
+    print(count)
+
+
 def main():
-    test_polar()
+    n_zeros()
 
 
 if __name__ == "__main__":
