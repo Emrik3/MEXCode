@@ -75,8 +75,9 @@ def optimal_composition(l, num_iters, safety_factor_eps=0, cushion=0):
 
 
 coeffs_list = optimal_composition(
-    l=1e-3, num_iters=10, safety_factor_eps=1e-2, cushion=0.02
+    l=1e-3, num_iters=10, safety_factor_eps=1e-2, cushion=0
 )
+print(coeffs_list)
 
 x = np.linspace(1e-3, 1, 10000)
 for i in range(5):

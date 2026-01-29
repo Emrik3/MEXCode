@@ -195,9 +195,9 @@ def test_approximation(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T, l)
 
-    x_plt = np.linspace(l, 1, 1000)
+    x_plt = np.linspace(l, 1, 10000)
 
-    x = np.linspace(l, 1, 1000)
+    x = np.linspace(l, 1, 10000)
     tot_degree = 1
     for i in range(T):
         x = p(coeffs17[i], x)
@@ -226,7 +226,7 @@ def plot_all(q, l=0.001):
 
     x = np.linspace(l, 1, 10000)
     tot_degree = 1
-    eps = 0.001
+    eps = 0.01
 
     ep2 = np.array([0.04794705, 0.74936796, 1.63851199, 1.99171281])
     y = np.array([min(ep2), max(ep2) + eps, min(ep2) - eps, max(ep2)])
