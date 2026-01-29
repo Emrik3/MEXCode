@@ -310,13 +310,14 @@ def test_polar():
 
 def approxs():
     test_approximation([2, 2, 2, 2, 2], 0.001)
+    test_approximation([4, 4, 8])
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
     approxs()
-    plot_all([2, 2, 2, 2, 2])
+    # plot_all([2, 2, 2, 2, 2])
 
 
 if __name__ == "__main__":

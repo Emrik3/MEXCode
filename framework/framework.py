@@ -84,8 +84,7 @@ def odd_remez(q, l, u, tol):
             break
 
         E = c[-1]
-    print(f"E = {E}")
-    print(x)
+
     return c
 
 
@@ -135,12 +134,12 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
         q = q_list[i]
         print(i)
         c = odd_remez(q, max(l, cushion * u), u, 1e-8)  # Make  more exact?
-        pl = p(c[:-1], l)
-        pu = p(c[:-1], u)
-        rescalar = 2 / (pl + pu)
-        print(f"Rescalar: {rescalar}")
-        for i in range(len(c[:-1])):
-            c[i] *= rescalar
+        if cushion * u > l:
+            pl = p(c[:-1], l)
+            pu = p(c[:-1], u)
+            rescalar = 2 / (pl + pu)
+            for i in range(len(c[:-1])):
+                c[i] *= rescalar
 
         l = p(c[:-1], l)
         u = 2 - l
@@ -201,7 +200,6 @@ def test_approximation(q, l=0.001):
     tot_degree = 1
     for i in range(T):
         x = p(coeffs17[i], x)
-        # x = x + l * (x - 1.06)
         tot_degree *= 2 * q[i] + 1
     print(f" min: {min(x)},  max: {max(x)}")
 
@@ -258,7 +256,7 @@ def plot_all(q, l=0.001):
 
 
 def test_polar():
-    q = [2, 2, 2, 8]
+    q = [4, 2, 2, 8]
     qPE = [2, 2, 2, 2, 2]
     T = len(q)
     TPE = len(qPE)
@@ -269,7 +267,7 @@ def test_polar():
     for i in range(len(coeffsPE)):
         coeffsPE[i] /= 1.01 ** (2 * i + 1)
 
-    A = torch.abs(torch.randn(5000, 70))
+    A = torch.abs(torch.randn(5000, 70))  # Varför funkar det inte för stora matriser?
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
@@ -297,14 +295,16 @@ def test_polar():
 
 
 def approxs():
-    test_approximation([2, 2], 0.001)
+    test_approximation([2, 2, 2, 2, 2], 0.001)
+    test_approximation([4, 2, 2, 8])  # 4+3+3+5=15
+    plt.show()
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
-    approxs()
-    plot_all([2, 2])
+    # approxs()
+    test_polar()
 
 
 if __name__ == "__main__":
