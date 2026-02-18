@@ -1,33 +1,40 @@
-import numpy as np
-import torch
 import matplotlib.pyplot as plt
+import numpy as np
 import sympy as sp
+import torch
 
 
 def sastre8(b):
     """See Sastre Efficient evaluation of matrix polynomials"""
-    assert(len(b) == 9)
-    assert(b[-1] > 1e-8)
+    assert len(b) == 9
+    assert b[-1] > 1e-8
 
-    c4 = np.sqrt(b[8]) # Two solutions from root
+    c4 = np.sqrt(b[8])  # Two solutions from root
 
-    c3 = b[7] / (2*c4)
+    c3 = b[7] / (2 * c4)
 
     de2 = (b[6] - c3**2) / c4
 
     d1 = (b[5] - c3 * de2) / c4
 
-    e2 = (((c3 / c4) * de2 - d1) + np.sqrt((d1 - (c3 / c4) * de2)**2 + 4*(c3 / c4) * (b[3] + (c3**2 / c4) * d1 - (c3 / c4) * b[4]))) / (2 * (c3 / c4)) # Two solutions from root
+    e2 = (
+        ((c3 / c4) * de2 - d1)
+        + np.sqrt(
+            (d1 - (c3 / c4) * de2) ** 2
+            + 4 * (c3 / c4) * (b[3] + (c3**2 / c4) * d1 - (c3 / c4) * b[4])
+        )
+    ) / (2 * (c3 / c4))  # Two solutions from root
 
     d2 = de2 - e2
 
-    e0 = (b[4] - c3*d1 - de2*e2 + e2**2) / c4
+    e0 = (b[4] - c3 * d1 - de2 * e2 + e2**2) / c4
 
     f2 = b[2]
     f1 = b[1]
     f0 = b[0]
 
     return [f0, f1, f2, e0, e2, d1, d2, c3, c4]
+
 
 def sastreEval17Scalar(X, b):
     f0, f1, f2, e0, e2, d1, d2, c3, c4 = b
@@ -75,21 +82,54 @@ def eval3(X: torch.tensor, b):
     return b[0] * X + b[1] * (X @ X.mT) @ X
 
 
-
-
-
 def testSastre():
     # Given form new polar degree 17 three times
-    c = np.array([np.array([ 2.59913611e+01, -7.92828499e+02,  9.80249362e+03, -5.80808762e+04,
-        1.87004843e+05, -3.45623379e+05,  3.66229363e+05, -2.06759009e+05,
-        4.81953758e+04]), np.array([ 1.13780641e+01, -8.90676835e+01,  2.82604469e+02, -4.29711692e+02,
-        3.55057277e+02, -1.68403157e+02,  4.57932885e+01, -6.63459879e+00,
-        3.96878112e-01]), np.array([   4.81741599,  -21.93954932,   62.52382524, -100.98701338,
-         96.18014484,  -55.02848716,   18.55832927,   -3.39555863,
-          0.25972273])])
-    
+    c = np.array(
+        [
+            np.array(
+                [
+                    2.59913611e01,
+                    -7.92828499e02,
+                    9.80249362e03,
+                    -5.80808762e04,
+                    1.87004843e05,
+                    -3.45623379e05,
+                    3.66229363e05,
+                    -2.06759009e05,
+                    4.81953758e04,
+                ]
+            ),
+            np.array(
+                [
+                    1.13780641e01,
+                    -8.90676835e01,
+                    2.82604469e02,
+                    -4.29711692e02,
+                    3.55057277e02,
+                    -1.68403157e02,
+                    4.57932885e01,
+                    -6.63459879e00,
+                    3.96878112e-01,
+                ]
+            ),
+            np.array(
+                [
+                    4.81741599,
+                    -21.93954932,
+                    62.52382524,
+                    -100.98701338,
+                    96.18014484,
+                    -55.02848716,
+                    18.55832927,
+                    -3.39555863,
+                    0.25972273,
+                ]
+            ),
+        ]
+    )
+
     x = np.linspace(0, 1, 1000)
-    
+
     for i in range(3):
         b = sastre8(c[i])
         x = sastreEval17Scalar(x, b)
@@ -97,7 +137,7 @@ def testSastre():
     x_plt = np.linspace(0, 1, 1000)
     plt.plot(x_plt, x)
     plt.show()
-    
+
 
 def main():
     testSastre()
@@ -105,4 +145,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

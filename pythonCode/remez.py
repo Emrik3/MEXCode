@@ -133,19 +133,19 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
 
     for i in range(T):
         q = q_list[i]
-        print(i)
-        c, equi = odd_remez(q, max(l, cushion * u), u, 1e-8)  # Make  more exact?
-        pl = p(c[:-1], l)
+        c, equi = odd_remez(q, l, u, 1e-8)  # Make  more exact?
+        """pl = p(c[:-1], l)
         pu = p(c[:-1], u)
         rescalar = 2 / (pl + pu)
         print(f"Rescalar: {rescalar}")
         for i in range(len(c[:-1])):
             c[i] *= rescalar
-
+"""
         l = p(c[:-1], l)
         u = 2 - l
         all_coeffs.append(c[:-1])
         equiList.append(equi)
+        print(c[:-1])
     return all_coeffs, equiList
 
 
@@ -270,16 +270,13 @@ def plot_all(q, l=0.001):
 
 
 def test_polar():
-    q = [2, 2, 2, 8]
+    q = [2, 2, 2, 2, 2]
     qPE = [2, 2, 2, 2, 2]
     T = len(q)
     TPE = len(qPE)
     coeffs17 = get_all_coeffs_different_degrees(q, T)
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
     print(coeffs17)
-
-    for i in range(len(coeffsPE)):
-        coeffsPE[i] /= 1.01 ** (2 * i + 1)
 
     A = torch.abs(torch.randn(5000, 70))
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
@@ -293,7 +290,7 @@ def test_polar():
         else:
             sastreCoeffs.append(coeffs17[i])
 
-    polarFactorNew = NewPolarExpress(A, T, sastreCoeffs)
+    polarFactorNew = PolarExpress(A, TPE, coeffsPE)
 
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
 
@@ -310,14 +307,14 @@ def test_polar():
 
 def approxs():
     test_approximation([2, 2, 2, 2, 2], 0.001)
-    test_approximation([4, 4, 8])
+    # test_approximation([4, 4, 8])
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
-    approxs()
-    # plot_all([2, 2, 2, 2, 2])
+    # approxs()
+    approxs()  # Right now gettig the coefficients without cushioning
 
 
 if __name__ == "__main__":

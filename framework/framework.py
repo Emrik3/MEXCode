@@ -132,17 +132,20 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
 
     for i in range(T):
         q = q_list[i]
-        print(i)
         c = odd_remez(q, max(l, cushion * u), u, 1e-8)  # Make  more exact?
         if cushion * u > l:
             pl = p(c[:-1], l)
             pu = p(c[:-1], u)
             rescalar = 2 / (pl + pu)
+            print(rescalar)
             for i in range(len(c[:-1])):
                 c[i] *= rescalar
 
+        for i in range(len(c) - 1):
+            c[i] /= 1.01 ** (2 * i + 1)
         l = p(c[:-1], l)
         u = 2 - l
+
         all_coeffs.append(c[:-1])
     return all_coeffs
 
@@ -172,7 +175,6 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
-
     for c in coeffs_list:
         if len(c) == 2:
             X = eval3(X, c)
@@ -185,6 +187,35 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
         else:
             raise NotImplementedError("This mult not impl!")
 
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    return X.to(G.dtype)
+
+
+@torch.compile
+def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
+    # TODO: accumulate in 32 bult mult in 16
+    assert G.ndim >= 2
+    X = G.float()
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    for c in coeffs_list:
+        for i in range(len(c) - 1):
+            c[i] /= 1.01 ** (2 * i + 1)
+    for a, b, c, d, e, f, g, h, i in coeffs_list:
+        A = X @ X.mT
+        B = (
+            b * A
+            + c * A @ A
+            + d * A @ A @ A
+            + e * A @ A @ A @ A
+            + f * A @ A @ A @ A @ A
+            + g * A @ A @ A @ A @ A @ A
+            + h * A @ A @ A @ A @ A @ A @ A
+            + i * A @ A @ A @ A @ A @ A @ A @ A
+        )
+        X = a * X + B @ X
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G.dtype)
@@ -256,7 +287,7 @@ def plot_all(q, l=0.001):
 
 
 def test_polar():
-    q = [4, 2, 2, 8]
+    q = [8, 8, 8]
     qPE = [2, 2, 2, 2, 2]
     T = len(q)
     TPE = len(qPE)
@@ -264,12 +295,10 @@ def test_polar():
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
     print(coeffs17)
 
-    for i in range(len(coeffsPE)):
-        coeffsPE[i] /= 1.01 ** (2 * i + 1)
-
-    A = torch.abs(torch.randn(5000, 70))  # Varför funkar det inte för stora matriser?
+    A = torch.abs(torch.randn(50, 7))  # Varför funkar det inte för stora matriser?
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
+    print(A)
 
     sastreCoeffs = []
 
@@ -295,16 +324,16 @@ def test_polar():
 
 
 def approxs():
-    test_approximation([2, 2, 2, 2, 2], 0.001)
-    test_approximation([4, 2, 2, 8])  # 4+3+3+5=15
+    test_approximation([2, 2])
+    # test_approximation([8, 8, 8])  # 4+3+3+5=15
     plt.show()
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
-    # approxs()
-    test_polar()
+    approxs()
+    # test_polar()
 
 
 if __name__ == "__main__":
