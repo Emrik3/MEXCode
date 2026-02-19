@@ -35,10 +35,9 @@ def r(zs, c):
     """
     Added penalty term at the start to make it grow quickley, but it is hard to do gauss newton given that we want bounds on maximum error.
     """
-    lam = 10
     return np.array(
         np.concatenate(
-            [[(g(z, c) - 1) for z in zs[:-1]], [(g(0.001, c) - 1) * lam]]
+            [[(g(z, c) - 1) for z in zs]]
         )  # Add the lambda term to make it important to be good at l=0.001
     ).T
 
@@ -68,29 +67,26 @@ def chebyshev(n, l, u, alpha=2.0):
     return (l + u) / 2 + (u - l) / 2 * x
 
 
-def gn(
-    tol,
-    max_iter,
-    zs,
-    c=np.array([0, 0, 0, -3, 0.5, 8, -25, 17]).T,
-):
+def gn(tol, max_iter, zs, c):
     """
     Very sensitive to starting guess, should have starting guess be the value that is from remez maybe.
     """
     err = 1
     i = 0
-    lam = 1e-3
+    lam = 1e-2
     while err > tol and i < max_iter:
         print(err)
         c_old = c
         try:
-            c = c - np.linalg.inv(J(zs, c).T @ J(zs, c) + lam * np.eye(len(c))) @ J(
-                zs, c
-            ).T @ r(zs, c)
+            jacobian = J(zs, c)
+            cDiff = -np.linalg.solve(
+                jacobian.T @ jacobian + lam * np.eye(len(c)), jacobian.T @ r(zs, c)
+            )
         except np.linalg.LinAlgError:
             print("ERROR")
             break
-        err = np.linalg.norm(c - c_old) / np.linalg.norm(c)
+        c = cDiff + c_old
+        err = max(abs(g(zs, c) - 1))
         i += 1
     return c
 
@@ -142,65 +138,20 @@ def findGN():
         ]
     ).T
     l = 0.001
-    zs = chebyshev(1000, l, 1, alpha=2)
+    zs = chebyshev(2000, l, 1, alpha=2)
     h = 1e-5
     # If you want more points around l.
-    # zs = np.concatenate([zs, np.linspace(0.001 - h, 0.001 + 10 * h, 1000)])
-    print(zs)
+    zs = np.concatenate([zs, np.linspace(0.001 - h, 0.001 + 10 * h, 1000)])
 
-    c = gn(5e-4, 10, zs, c_init)
-    print(c)  # Fix the print, stroe into file instead
+    c = gn(0.1, 10, zs, c_init)
+    np.save("coeffs.npy", c)
 
 
 def plot():
 
-    c = np.array(
-        [
-            3.40482973e01,
-            -9.70113238e01,
-            7.11421023e01,
-            -3.11196264e00,
-            5.94118347e-01,
-            8.16086622e00,
-            -2.32524162e01,
-            1.70519450e01,
-            -6.16411353e-05,
-            -5.09503933e-03,
-            4.64121405e-03,
-            1.49323561e01,
-            -1.11315218e01,
-            2.12467884e00,
-            -2.58893603e00,
-            4.90997448e-01,
-            -5.94610774e-02,
-            9.44306927e-04,
-            3.93597558e-02,
-            -4.86813463e-02,
-            9.78058091e-04,
-            1.73157273e-03,
-            1.29040187e01,
-            -9.35094745e00,
-            1.77431544e00,
-            -2.70269307e00,
-            6.17781427e-01,
-            -8.14885315e-02,
-            9.40441430e-03,
-            4.84096408e-02,
-            -9.34631938e-02,
-            -3.51320571e-02,
-            1.32215073e-02,
-            -2.66469189e-01,
-            1.48316635e-01,
-            -2.56611685e-02,
-            6.13287053e00,
-            -4.56880009e00,
-            1.04648591e00,
-            -7.62474335e-01,
-            1.39833330e-01,
-        ]
-    )
+    c = np.load("coeffs.npy")
     l = 0.001
-    x = np.linspace(0, 1, 1000)
+    x = np.linspace(0, 1, 10000)
     print(f"g(l) = {g(l, c)}")
     plt.plot(x, g(x, c), label="Gauss-Newton")
 
@@ -221,10 +172,11 @@ def plot():
         # (1.875, -1.25, 0.375),  # subsequent coeffs equal this numerically
     ]
 
-    x = np.linspace(l, 1, 10000)
-
+    x = np.linspace(0, 1, 10000)
     for i in range(5):
         x = pPE(coeffs_list[i], x)
+        l = pPE(coeffs_list[i], l)
+    print(f"PE(l) = {l}")
 
     plt.plot(np.linspace(0, 1, 10000), x, label="PE")
     plt.legend()
@@ -233,6 +185,7 @@ def plot():
 
 def main():
     findGN()
+    plot()
 
 
 if __name__ == "__main__":
