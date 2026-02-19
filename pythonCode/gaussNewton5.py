@@ -67,27 +67,36 @@ def chebyshev(n, l, u, alpha=2.0):
     return (l + u) / 2 + (u - l) / 2 * x
 
 
-def gn(tol, max_iter, zs, c):
+def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4, lam=1000):
     """
     Very sensitive to starting guess, should have starting guess be the value that is from remez maybe.
     """
-    err = 1
-    i = 0
-    lam = 1e-2
-    while err > tol and i < max_iter:
-        print(err)
-        c_old = c
-        try:
-            jacobian = J(zs, c)
-            cDiff = -np.linalg.solve(
-                jacobian.T @ jacobian + lam * np.eye(len(c)), jacobian.T @ r(zs, c)
-            )
-        except np.linalg.LinAlgError:
-            print("ERROR")
-            break
-        c = cDiff + c_old
+    c = c0.copy()
+    for i in range(max_iter):
+        res = r(zs, c)
+        jac = J(zs, c)
+        F = 0.5 * np.dot(res, res) + lam * max(res) ** 2
+        gr = jac.T @ res
+
+        p, *_ = np.linalg.lstsq(jac, -res, rcond=None)
+        if gr @ p >= 0:
+            raise RuntimeError("Direction is not descent.")
+
+        # Armijo
+        alpha = alpha0
+        while True:
+            c_trial = c + alpha * p
+            res_trial = r(zs, c_trial)
+            F_trial = 0.5 * np.dot(res_trial, res_trial) + lam * max(res_trial) ** 2
+
+            if F_trial <= F + a * alpha * (gr @ p):
+                break
+            alpha *= rho
+        c = c_trial
         err = max(abs(g(zs, c) - 1))
-        i += 1
+        print(err)
+        if err < tol:
+            break
     return c
 
 
@@ -141,9 +150,9 @@ def findGN():
     zs = chebyshev(2000, l, 1, alpha=2)
     h = 1e-5
     # If you want more points around l.
-    zs = np.concatenate([zs, np.linspace(0.001 - h, 0.001 + 10 * h, 1000)])
+    zs = np.concatenate([zs, np.linspace(0.001, 0.001 + 10 * h, 1000)])
 
-    c = gn(0.1, 10, zs, c_init)
+    c = gn(0.1, 15, zs, c_init)
     np.save("coeffs.npy", c)
 
 
