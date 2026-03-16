@@ -57,7 +57,7 @@ def error(c, l, u, x):
 
 
 def plot_comp():
-    c = coeffs_list
+    c = coeffs_list_no_cushion
     l = 0.001
     u = 1
     x = np.linspace(l, u, 1000)
@@ -68,12 +68,12 @@ def plot_comp():
 
 
 def plot_non_comp():
-    c = coeffs_list[0]
+    c = coeffs_list_no_cushion[0]
     l = 0.001
     u = 1
     x = np.linspace(l, u, 1000)
-    plt.plot(x, np.abs(error(c, l, u, x) - 1), label="Approx error")
-    plt.plot(x, np.abs(p(c, x) - 1), label="Actual error")
+    plt.plot(x, np.abs(p(c, x)), label="Polynomial")
+    plt.plot(x, np.abs(pp(c, x)), label="Derivative")
     plt.legend()
     plt.show()
 

@@ -6,6 +6,8 @@ import numpy as np
 import sympy as sp
 import torch
 from evalPol import eval3, eval5, eval9, eval17, sastre8
+from PIL.Image import item
+from scipy.optimize import minimize
 from sympy.series.approximants import approximants
 
 
@@ -91,7 +93,7 @@ def odd_remez(q, l, u, tol):
 
 def odd_remez_expanded(q, qOld, cOld, l, u, tol):
     n = q + 2 + qOld
-    m = n
+    m = n - 2
     x = np.zeros(m)
     f = np.ones(m)
     lam = 1
@@ -107,10 +109,20 @@ def odd_remez_expanded(q, qOld, cOld, l, u, tol):
     old_E = np.inf
     E = 1000
 
-    while np.abs(old_E - E) > tol:
-        f = np.ones(m)
+    def objective(c):
+        x = np.linspace(l, u)
+        x_plt = np.linspace(l, u)
+        for i in range(2):
+            if i == 0:
+                x = p(cOld, x)
+            else:
+                x = p(c[0:3], x_plt) + c[3] * x**3 + c[4] * x**5
 
-        m = len(x)
+        return max(np.abs((np.array(x) - 1)))
+
+    max_iter = 100
+    it = 0
+    while np.abs(old_E - E) > tol and it < max_iter:
         old_E = E
         A = np.zeros((m, n))
         for j in range(m):
@@ -120,22 +132,28 @@ def odd_remez_expanded(q, qOld, cOld, l, u, tol):
                 else:
                     A[j, i] = p(cOld, x[j]) ** (2 * (i - 2) + 1)
         A[:, -1] = (-1) ** np.arange(m) * lam
-
         c = np.linalg.pinv(A) @ f
+
+        cons = {"type": "eq", "fun": lambda c: A @ c - f}
+
+        res = minimize(objective, c, constraints=cons)
+        c = res.x
 
         x_new = []
         root_guess = sorted(find_roots(c[:-1], cOld, l, u))
         # Always include endpoints
-        x_new = [l] + list(root_guess) + [u]
+        x_new = [l] + list(root_guess[1:-1]) + [u]
 
         # TODO: Add newton to refine this here
 
         # Sort for consistency
         x_new = np.array(sorted(x_new))
+
         if len(x_new) != m:
             raise ValueError(f"Expected {m} extremal points, got {len(x_new)}")
 
         x = x_new
+
         # Make sure all unique points were found
         if len(x_new) == len(set(x_new)):
             x = np.array(x_new)
@@ -145,6 +163,7 @@ def odd_remez_expanded(q, qOld, cOld, l, u, tol):
 
         E = c[-1]
         print(E)
+        it += 1
 
     return c
 
@@ -169,6 +188,7 @@ def find_roots(c, cOld, l, u):
         )
 
     guesses = []
+
     for i in range(len(xs) - 1):
         if vals[i] * vals[i + 1] < 0:
             a, b = xs[i], xs[i + 1]
@@ -176,9 +196,8 @@ def find_roots(c, cOld, l, u):
 
     guesses = np.array(guesses)
 
-    """
     while len(guesses) > len(c) - 1:
-        guesses = np.delete(guesses, np.where(f(guesses) == min(f(guesses))))"""
+        guesses = np.delete(guesses, np.where(f(guesses) == min(f(guesses))))
 
     return guesses
 
@@ -259,7 +278,7 @@ def get_all_coeffs_different_degrees_new(q_list, T, l=0.001):
         if i == 0:
             c = odd_remez(q, max(l, cushion * u), u, 1e-10)  # Make  more exact?
         else:
-            c = odd_remez_expanded(q, q_list[i - 1], all_coeffs[-1], l, u, 1e-10)
+            c = odd_remez_expanded(q, q_list[i - 1], all_coeffs[-1], l, u, 5e-4)
         if cushion * u > l:
             pl = p(c[:-1], l)
             pu = p(c[:-1], u)
@@ -274,11 +293,10 @@ def test_approximation_new(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees_new(q, T, l)
     x_plt = np.linspace(l, 1, 10000)
+
     x = np.linspace(l, 1, 10000)
     tot_degree = 1
     for i in range(T):
-        print(coeffs17[i])
-
         if i == 0:
             x = p(coeffs17[i], x)
         else:

@@ -35,7 +35,6 @@ def odd_remez(q, l, u, tol):
     x = np.zeros(q + 2)
     f = np.ones(q + 2)
     n = q + 2
-
     # Calculate initial guess of points as Chebyshev points
     for i in range(n):
         x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
@@ -82,7 +81,7 @@ def odd_remez(q, l, u, tol):
         else:
             print("Error: Could not find all points")
             break
-
+        print(x)
         E = c[-1]
 
     return c
@@ -126,6 +125,7 @@ def plot_pol(c):
 # Maybe just do any degree not using this?
 def get_all_coeffs_different_degrees(q_list, T, l=0.001):
     cushion = 0.02407327424182761
+    cushion = 0
     u = 1
     all_coeffs = []
     eps = 1e-10
@@ -171,7 +171,7 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.bfloat16()
+    X = G.float()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
@@ -196,7 +196,7 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.float()
+    X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
@@ -225,14 +225,15 @@ def test_approximation(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T, l)
 
-    x_plt = np.linspace(l, 1, 10000)
+    x_plt = np.linspace(0, 1, 10000)
 
-    x = np.linspace(l, 1, 10000)
+    x = np.linspace(0, 1, 10000)
     tot_degree = 1
     for i in range(T):
         x = p(coeffs17[i], x)
         tot_degree *= 2 * q[i] + 1
-    print(f" min: {min(x)},  max: {max(x)}")
+        l = p(coeffs17[i], l)
+        print(f"l = {l}")
 
     plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
 
@@ -287,7 +288,7 @@ def plot_all(q, l=0.001):
 
 
 def test_polar():
-    q = [8, 8, 8]
+    q = [4, 8, 8]
     qPE = [2, 2, 2, 2, 2]
     T = len(q)
     TPE = len(qPE)
@@ -295,10 +296,9 @@ def test_polar():
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
     print(coeffs17)
 
-    A = torch.abs(torch.randn(50, 7))  # Varför funkar det inte för stora matriser?
+    A = torch.abs(torch.randn(500, 70))  # Varför funkar det inte för stora matriser?
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
-    print(A)
 
     sastreCoeffs = []
 
@@ -307,6 +307,7 @@ def test_polar():
             sastreCoeffs.append(sastre8(coeffs17[i]))
         else:
             sastreCoeffs.append(coeffs17[i])
+    print(sastreCoeffs)
 
     polarFactorNew = NewPolarExpress(A, T, sastreCoeffs)
 
@@ -324,9 +325,7 @@ def test_polar():
 
 
 def approxs():
-    test_approximation([2, 2])
-    # test_approximation([8, 8, 8])  # 4+3+3+5=15
-    plt.show()
+    test_approximation([2])
 
 
 def main():

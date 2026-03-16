@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.optimize import brentq
 
 
 def p(z, c):
@@ -31,15 +32,14 @@ def g(z, c):
     return q4
 
 
-def r(zs, c):
+# Making p larger makes it approx, the infty norm, then it does not change any parameters form the ones given from remez, does this mean remez already optimal?
+# Unless the remez solution is a local solution and it wont get out of there if the guess is the remez solution
+def r(zs, c, p=2):
     """
     Added penalty term at the start to make it grow quickley, but it is hard to do gauss newton given that we want bounds on maximum error.
     """
-    return np.array(
-        np.concatenate(
-            [[(g(z, c) - 1) for z in zs]]
-        )  # Add the lambda term to make it important to be good at l=0.001
-    ).T
+    e = g(zs, c) - 1
+    return e**2
 
 
 def J(zs, c):
@@ -67,7 +67,7 @@ def chebyshev(n, l, u, alpha=2.0):
     return (l + u) / 2 + (u - l) / 2 * x
 
 
-def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4, lam=1000):
+def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4):
     """
     Very sensitive to starting guess, should have starting guess be the value that is from remez maybe.
     """
@@ -75,7 +75,7 @@ def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4, lam=1000):
     for i in range(max_iter):
         res = r(zs, c)
         jac = J(zs, c)
-        F = 0.5 * np.dot(res, res) + lam * max(res) ** 2
+        F = 0.5 * np.dot(res, res)
         gr = jac.T @ res
 
         p, *_ = np.linalg.lstsq(jac, -res, rcond=None)
@@ -87,7 +87,7 @@ def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4, lam=1000):
         while True:
             c_trial = c + alpha * p
             res_trial = r(zs, c_trial)
-            F_trial = 0.5 * np.dot(res_trial, res_trial) + lam * max(res_trial) ** 2
+            F_trial = 0.5 * np.dot(res_trial, res_trial)
 
             if F_trial <= F + a * alpha * (gr @ p):
                 break
@@ -97,7 +97,53 @@ def gn(tol, max_iter, zs, c0, alpha0=1.0, rho=0.5, a=1e-4, lam=1000):
         print(err)
         if err < tol:
             break
+
     return c
+
+
+def equi_points(n):
+    def pPE(c, x):
+        out = 0
+        for i in range(len(c)):
+            out += c[i] * x ** (2 * i + 1)
+        return out
+
+    coeffs_list = [
+        (8.28721201814563, -23.595886519098837, 17.300387312530933),
+        (4.107059111542203, -2.9478499167379106, 0.5448431082926601),
+        (3.9486908534822946, -2.908902115962949, 0.5518191394370137),
+        (3.3184196573706015, -2.488488024314874, 0.51004894012372),
+        (2.300652019954817, -1.6689039845747493, 0.4188073119525673),
+        # (1.891301407787398, -1.2679958271945868, 0.37680408948524835),
+        # (1.8750014808534479, -1.2500016453999487, 0.3750001645474248),
+        # (1.875, -1.25, 0.375),  # subsequent coeffs equal this numerically
+    ]
+    coeffs_list_no_cushion = [
+        [8.4703288, -25.10807471, 18.6292756],
+        [4.18283418, -3.10870111, 0.58060668],
+        [3.96185728, -2.95406375, 0.56297612],
+        [3.28658622, -2.46472013, 0.50735769],
+        [2.27374999, -1.64466037, 0.41619093],
+    ]
+
+    x = np.linspace(0, 1, n)
+    for i in range(5):
+        x = pPE(coeffs_list_no_cushion[i], x)
+
+    xs = np.linspace(0, 1, n)
+    ys = x
+    # local maxima
+    maxima = (ys[1:-1] > ys[:-2]) & (ys[1:-1] > ys[2:])
+
+    # local minima
+    minima = (ys[1:-1] < ys[:-2]) & (ys[1:-1] < ys[2:])
+
+    # combine
+    extrema_indices = np.where(maxima | minima)[0] + 1
+
+    max_points = xs[extrema_indices]
+
+    return max_points
 
 
 def findGN():
@@ -147,12 +193,13 @@ def findGN():
         ]
     ).T
     l = 0.001
-    zs = chebyshev(2000, l, 1, alpha=2)
+    zs = equi_points(100000)
+    print(len(zs))
     h = 1e-5
     # If you want more points around l.
     zs = np.concatenate([zs, np.linspace(0.001, 0.001 + 10 * h, 1000)])
 
-    c = gn(0.1, 15, zs, c_init)
+    c = gn(0.1, 5, zs, c_init)
     np.save("coeffs.npy", c)
 
 
@@ -181,12 +228,21 @@ def plot():
         # (1.875, -1.25, 0.375),  # subsequent coeffs equal this numerically
     ]
 
+    coeffs_list_no_cushion = [
+        [8.4703288, -25.10807471, 18.6292756],
+        [4.18283418, -3.10870111, 0.58060668],
+        [3.96185728, -2.95406375, 0.56297612],
+        [3.28658622, -2.46472013, 0.50735769],
+        [2.27374999, -1.64466037, 0.41619093],
+    ]
+
     x = np.linspace(0, 1, 10000)
     for i in range(5):
-        x = pPE(coeffs_list[i], x)
-        l = pPE(coeffs_list[i], l)
+        x = pPE(coeffs_list_no_cushion[i], x)
+        l = pPE(coeffs_list_no_cushion[i], l)
     print(f"PE(l) = {l}")
-
+    zs = equi_points(100000)
+    plt.scatter(zs, np.ones_like(zs), s=0.3)
     plt.plot(np.linspace(0, 1, 10000), x, label="PE")
     plt.legend()
     plt.show()

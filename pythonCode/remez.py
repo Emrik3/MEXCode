@@ -39,9 +39,12 @@ def odd_remez(q, l, u, tol):
     # Calculate initial guess of points as Chebyshev points
     for i in range(n):
         x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
-    x = np.array(sorted(x))
+    x = sorted(x)
+    x = [l] + x[1:-1] + [u]
+    x = np.array(x)
     old_E = np.inf
     E = 1000
+    iii = 0
 
     while np.abs(old_E - E) > tol:
         old_E = E
@@ -51,7 +54,12 @@ def odd_remez(q, l, u, tol):
                 A[j, i] = x[j] ** (2 * i + 1)
         A[:, -1] = (-1) ** np.arange(n)
         c = np.linalg.solve(A, f)
-
+        y = np.linspace(l, u)
+        print(f"Iter: {iii}")
+        print(f"Error: {c[-1]}")
+        plt.plot(y, p(c[:-1], y))
+        plt.show()
+        iii += 1
         x_new = []
         coeffs_for_roots = derivative_coeffs(c[:-1])
         root_guess = np.roots(coeffs_for_roots)
@@ -83,6 +91,34 @@ def odd_remez(q, l, u, tol):
             print("Error: Could not find all points")
             break
 
+        E = c[-1]
+    return c, x
+
+
+def odd_remezTEST(q, l, u, tol):
+    x = np.zeros(q + 2)
+    f = np.ones(q + 2)
+    n = q + 2
+
+    # Calculate initial guess of points as Chebyshev points
+    for i in range(n):
+        x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((2 * i + 1) * np.pi / (2 * n))
+    x = np.array(sorted(x))
+    old_E = np.inf
+    E = 1000
+
+    while np.abs(old_E - E) > tol:
+        old_E = E
+        A = np.zeros((n, n))
+        for j in range(n):
+            for i in range(n - 1):
+                A[j, i] = (
+                    8.4703288 * x[j] - 25.10807471 * x[j] ** 3 + 18.6292756 * x[j] ** 5
+                ) ** (2 * i + 1)
+        A[:, -1] = (-1) ** np.arange(n)
+        c = np.linalg.solve(A, f)
+
+        x = np.array([0.0084703, 0.73410648, 1.63512234, 1.9915297])
         E = c[-1]
 
     return c, x
@@ -143,9 +179,35 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
 """
         l = p(c[:-1], l)
         u = 2 - l
+        print(l)
         all_coeffs.append(c[:-1])
         equiList.append(equi)
-        print(c[:-1])
+    return all_coeffs, equiList
+
+
+def get_all_coeffs_different_degreesTEST(q_list, T, l=0.001):
+    cushion = 0.02407327424182761
+    u = 1
+    all_coeffs = []
+    equiList = []
+    eps = 1e-10
+
+    for i in range(T):
+        q = q_list[i]
+        if i == 0:
+            c, equi = odd_remez(q, l, u, 1e-8)  # Make  more exact?
+            """pl = p(c[:-1], l)
+            pu = p(c[:-1], u)
+            rescalar = 2 / (pl + pu)
+            print(f"Rescalar: {rescalar}")
+            for i in range(len(c[:-1])):
+                c[i] *= rescalar
+    """
+        else:
+            c, equi = odd_remezTEST(q, l, u, 1e-8)  # Make  more exact?
+
+        all_coeffs.append(c[:-1])
+        equiList.append(equi)
     return all_coeffs, equiList
 
 
@@ -204,9 +266,24 @@ def test_approximation(q, l=0.001):
         x = p(coeffs17[i], x)
         tot_degree *= 2 * q[i] + 1
 
-    print(f" min: {min(x)},  max: {max(x)}")
+    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
 
-    # plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
+    plt.legend()
+
+
+def test_approximationTEST(q, l=0.001):
+    T = len(q)
+    coeffs17, equiList = get_all_coeffs_different_degreesTEST(q, T, l)
+
+    x_plt = np.linspace(l, 1, 10000)
+
+    x = np.linspace(l, 1, 10000)
+    tot_degree = 1
+    for i in range(T):
+        x = p(coeffs17[i], x)
+        tot_degree *= 2 * q[i] + 1
+
+    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
 
     plt.legend()
 
@@ -252,21 +329,17 @@ def plot_all(q, l=0.001):
             label=f"new P{i + 1}",
         )
         l = p(coeffs17[i], l)
+
         u = 2 - l
         plt.plot(np.linspace(0, 2), np.linspace(0, 2) * 0 + l)
         plt.plot(np.linspace(0, 2), np.linspace(0, 2) * 0 + u)
 
-        print(coeffs17[i])
         plt.legend()
         plt.show()
 
     for i in range(T):
         x = p(coeffs17[i], x)
         tot_degree *= 2 * q[i] + 1
-
-    print(
-        f"New min: {min(x)}, new max: {max(x)}"
-    )  # It seems to work, i get larger l and smaller u? Double check these results
 
 
 def test_polar():
@@ -276,7 +349,6 @@ def test_polar():
     TPE = len(qPE)
     coeffs17 = get_all_coeffs_different_degrees(q, T)
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
-    print(coeffs17)
 
     A = torch.abs(torch.randn(5000, 70))
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
@@ -306,8 +378,11 @@ def test_polar():
 
 
 def approxs():
+    print("Polar Express")
     test_approximation([2, 2, 2, 2, 2], 0.001)
-    # test_approximation([4, 4, 8])
+    print("New polar")
+    test_approximation([8, 8, 8], 0.001)
+    plt.show()
 
 
 def main():
