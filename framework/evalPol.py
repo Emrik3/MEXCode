@@ -82,6 +82,13 @@ def eval3(X: torch.tensor, b):
     return b[0] * X + b[1] * (X @ X.mT) @ X
 
 
+def p(c, x):
+    out = 0
+    for i in range(len(c)):
+        out += c[i] * x ** (2 * i + 1)
+    return out
+
+
 def testSastre():
     # Given form new polar degree 17 three times
     c = np.array(
@@ -128,15 +135,15 @@ def testSastre():
         ]
     )
 
-    x = np.linspace(0, 1, 1000)
-
+    x_ref = np.linspace(0.01, 1, 1000)  # avoid 0 — polar starts near 0 anyway
+    x1, x2 = x_ref.copy(), x_ref.copy()
     for i in range(3):
         b = sastre8(c[i])
-        x = sastreEval17Scalar(x, b)
-
-    x_plt = np.linspace(0, 1, 1000)
-    plt.plot(x_plt, x)
-    plt.show()
+        x1 = sastreEval17Scalar(x1, b)
+        x2 = p(c[i], x2)
+    max_err = np.max(np.abs(x1 - x2))
+    print(f"Max scalar Sastre vs direct eval error: {max_err:.2e}")
+    assert max_err < 1e-8, "Sastre decomposition is wrong!"
 
 
 def main():

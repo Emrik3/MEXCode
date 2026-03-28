@@ -4,8 +4,10 @@ from itertools import repeat
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from evalPol import eval3, eval5, eval9, eval17, sastre8
+from evalPol import eval3, eval5, eval9, eval17, eval17AccIn32, sastre8
 from sympy.series.approximants import approximants
+
+from framework.evalPol import eval17AccIn32
 
 
 def p(c, x):
@@ -81,6 +83,7 @@ def odd_remez(q, l, u, tol):
         else:
             print("Error: Could not find all points")
             break
+        print(x)
         E = c[-1]
 
     return c
@@ -135,16 +138,14 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
             pl = p(c[:-1], l)
             pu = p(c[:-1], u)
             rescalar = 2 / (pl + pu)
+            print(rescalar)
             for i in range(len(c[:-1])):
                 c[i] *= rescalar
 
         for i in range(len(c) - 1):
-            c[i] /= (1.01) ** (2 * i + 1)
+            c[i] /= 1.01 ** (2 * i + 1)
         l = p(c[:-1], l)
-        print(l)
-        x = np.linspace(l, u, 1000)
-
-        u = np.max(p(c[:-1], x))
+        u = 2 - l
 
         all_coeffs.append(c[:-1])
     return all_coeffs
@@ -168,16 +169,13 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 
 
 @torch.compile
-def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
+def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list, coeffs2) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
-    S = torch.linalg.svdvals(X.float())
-    print(f"Singular value range after normalization: [{S.min():.4f}, {S.max():.4f}]")
-
     for c in coeffs_list:
         if len(c) == 2:
             X = eval3(X, c)
@@ -186,11 +184,10 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
         elif len(c) == 5:
             X = eval9(X, c)
         elif len(c) == 9:
-            X = eval17(X, c)
+            X = eval17AccIn32(X, c)
         else:
             raise NotImplementedError("This mult not impl!")
-        S = torch.linalg.svdvals(X.float())
-        print(f"Singular value range at iter: [{S.min():.4f}, {S.max():.4f}]")
+
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G.dtype)
@@ -204,9 +201,6 @@ def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
-    for c in coeffs_list:
-        for i in range(len(c) - 1):
-            c[i] /= 1.01 ** (2 * i + 1)
     for a, b, c, d, e, f, g, h, i in coeffs_list:
         A = X @ X.mT
         B = (
@@ -228,7 +222,7 @@ def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def test_approximation(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T, l)
-    print(coeffs17)
+
     x_plt = np.linspace(0, 1, 10000)
 
     x = np.linspace(0, 1, 10000)
@@ -237,6 +231,7 @@ def test_approximation(q, l=0.001):
         x = p(coeffs17[i], x)
         tot_degree *= 2 * q[i] + 1
         l = p(coeffs17[i], l)
+        print(f"l = {l}")
 
     plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
 
@@ -246,6 +241,7 @@ def test_approximation(q, l=0.001):
 def interpolateTest(x, y):
     A = np.array([[x[i] ** (2 * j + 1) for j in range(3)] for i in range(4)])
 
+    print(A)
     f = np.array(y)
     c, residuals, rank, s = np.linalg.lstsq(A, f, rcond=None)
     return c
@@ -265,6 +261,7 @@ def plot_all(q, l=0.001):
     ep1 = np.array([0.02407327, 0.37624298, 0.82266478, 1])
 
     coeffs17[0] = interpolateTest(ep1, y)
+    print(coeffs17[0])
 
     for i in range(T):
         x = p(coeffs17[i], x)
@@ -291,12 +288,13 @@ def plot_all(q, l=0.001):
 def test_polar():
     # TODO: using 2,2,2,2,8 seems to be worse than 2,2,2,2,2 whcih makes no sence. might be an error in the sastre implementation
     # or the stability is present even when l is small
-    q = [8, 8, 8]  # TODO: Order seems to matter for stability.
+    q = [4, 4, 4, 1]  # TODO: Order seems to matter for stability.
     qPE = [2, 2, 2, 2, 2]
     T = len(q)
     TPE = len(qPE)
     coeffs17 = get_all_coeffs_different_degrees(q, T)
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
+    print(coeffs17)
 
     A = torch.abs(torch.randn(500, 70))  # Varför funkar det inte för stora matriser?
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
@@ -309,8 +307,9 @@ def test_polar():
             sastreCoeffs.append(sastre8(coeffs17[i]))
         else:
             sastreCoeffs.append(coeffs17[i])
+    print(sastreCoeffs)
 
-    polarFactorNew = NewPolarExpress(A, T, sastreCoeffs)
+    polarFactorNew = NewPolarExpress(A, T, sastreCoeffs, coeffs17[-1])
 
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
 
@@ -325,8 +324,8 @@ def test_polar():
 
 
 def approxs():
-    # test_approximation([8, 8, 8])
-    test_approximation([4])
+    test_approximation([4, 4, 4, 1])
+    test_approximation([2, 2, 2, 2, 2])
     plt.show()
 
 
@@ -334,7 +333,7 @@ def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
     approxs()
-    # test_polar()
+    test_polar()
 
 
 if __name__ == "__main__":

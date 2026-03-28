@@ -358,9 +358,26 @@ def max5(l, u):
                 continue
             E.append(betterError([l, x, y, u], q))
             # Ok so simple and normal give the same answer but the bound is a bit too good?
-            if len(E) > 5:
-                if E[-1] == max(E):
-                    print(x, y)
+
+    return max(E)
+
+
+def max7(l, u):
+    q = 3
+    d = (1 - l) / (2 * q + 1) ** 2
+
+    xplt = np.linspace(l + d, u - d)
+    E = []
+    for x in xplt:
+        for y in xplt:
+            for z in xplt:
+                if x >= y or y >= z:
+                    continue
+                E.append(betterError([l, x, y, z, u], q))
+                # Ok so simple and normal give the same answer but the bound is a bit too good?
+                if len(E) > 5:
+                    if E[-1] == max(E):
+                        print(x, y)
     print(1 - max(E))
     return max(E)
 
@@ -389,8 +406,57 @@ def maxProp(l, q):
     return (odd - even) / (odd + even)
 
 
+coeffs_list_no_cushion = [
+    [8.4703288, -25.10807471, 18.6292756],
+    [4.18283418, -3.10870111, 0.58060668],
+    [3.96185728, -2.95406375, 0.56297612],
+    [3.28658622, -2.46472013, 0.50735769],
+    [2.27374999, -1.64466037, 0.41619093],
+]
+
+
+def PEComp():
+    l = pPE(coeffs_list_no_cushion[0], 0.001)
+    lPE = l
+    q = 2
+
+    for i in range(4):
+        print("Polar Express:")
+        lPE = pPE(coeffs_list_no_cushion[i + 1], lPE)
+        print(lPE)
+        print("FP:")
+        l = 1 - fixedPointBound(l, q)
+        print(l)
+        print("")
+
+
+def fixedPointBound(l, q):
+    return (1 - l) ** (q + 1)
+
+
+def derivTest():
+    l = 0.99
+    eps = 0.000001
+    print(
+        (E(l + eps, 2 - l - eps) - 2 * E(l, 2 - l) + E(l - eps, 2 - l + eps)) / eps**2
+    )
+
+
+def main2():
+    l = 0.008205137512087042
+    ellList = []
+    for i in range(5):
+        ellList.append(l)
+
+        l = 1 - fixedPointBound(l, 2)
+        print(l)
+    ellList.append(l)
+    for i in range(len(ellList) - 1):
+        print((1 - ellList[i + 1]) / (1 - ellList[i]) ** (2 + 1))
+
+
 def main():
-    max5(0.001, 1)
+    derivTest()
 
 
 main()
