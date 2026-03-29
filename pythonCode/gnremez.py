@@ -103,7 +103,8 @@ def gn(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
     Very sensitive to starting guess, should have starting guess be the value that is from remez maybe.
     """
     c = c0.copy()
-    err = 1 - 0.001
+    err = (1 - 0.001) ** (2**m)
+    print(err)
     for i in range(max_iter):
         res = r(zs, c, m, fc)
         jac = J(zs, c, m)
@@ -125,10 +126,47 @@ def gn(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
                 break
             alpha *= rho
         c = c_trial
-        err = np.max([np.abs(g(z, c, m) - 1) for z in zs])
-        err2 = np.sum([np.abs(g(z, c, m) - 1) ** 2 for z in zs])
+        err2 = np.sum([np.abs(r(zs, c, m, fc)) ** 2 for z in zs]) / len(zs)
+        print(err2)
+        if err2 < tol:
+            break
 
-        print(err)
+    return c
+
+
+def newton(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
+    """
+    Newton's method version of the Gauss-Newton routine.
+    Assumes number of residuals == number of variables and J is invertible.
+    """
+    c = c0.copy()
+
+    for i in range(max_iter):
+        res = r(zs, c, m, fc)
+        jac = J(zs, c, m)
+
+        # Solve J p = -r (Newton step)
+        try:
+            p = np.linalg.solve(jac, -res)
+        except np.linalg.LinAlgError:
+            raise RuntimeError("Jacobian is singular or ill-conditioned.")
+
+        # Optional: keep line search for stability
+        alpha = alpha0
+        while True:
+            c_trial = c + alpha * p
+            res_trial = r(zs, c_trial, m, fc)
+
+            # Use residual norm instead of F
+            if np.linalg.norm(res_trial) <= (1 - a * alpha) * np.linalg.norm(res):
+                break
+            alpha *= rho
+
+        c = c_trial
+
+        err2 = np.linalg.norm(r(zs, c, m, fc)) ** 2 / len(zs)
+        print(err2)
+
         if err2 < tol:
             break
 
@@ -136,6 +174,26 @@ def gn(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
 
 
 def roots(c, l, u, steps=10000):
+    xs = np.linspace(l, u, steps)
+    guesses = []
+    eps = 1e-8
+
+    prev_x = xs[0]
+    prev_val = 1 - f(c, prev_x)
+
+    for x in xs[1:]:
+        curr_val = 1 - f(c, x)
+
+        # Check for sign change
+        if prev_val * curr_val < 0:
+            guesses.append((prev_x + x) / 2)
+        prev_x = x
+        prev_val = curr_val
+
+    return guesses
+
+
+def rootsp(c, l, u, steps=10000):
     xs = np.linspace(l, u, steps)
     guesses = []
     eps = 1e-8
@@ -191,27 +249,42 @@ def plot_og(c):
 
 
 def approxs():
-    m = 11  # TODO: Why would too high degree make it not work?
+    m = 4  # TODO: Why would too high degree make it not work?
     l = 0.001
     u = 1
 
     fc = [
         [8.4703288, -25.10807471, 18.6292756],
         [4.18283418, -3.10870111, 0.58060668],
-        [3.96185728, -2.95406375, 0.56297612],
-        [3.28658622, -2.46472013, 0.50735769],
-        [2.27374999, -1.64466037, 0.41619093],
     ]
-    guesses = roots(fc, l, u)
+    extremums = np.concatenate(
+        [
+            [l],
+            rootsp(fc, l, u),
+            [u],
+        ]
+    )
+    intersects = roots(fc, l, u)
+    guesses = []
+    for i in range(len(intersects)):
+        guesses.append(extremums[i])
+        guesses.append(intersects[i])
+    guesses.append(extremums[-1])
 
-    guesses = [l] + list(guesses) + [u]
-    guess = np.array([(-0.99) ** i for i in range(m**2 + 4 * m + 2)])
+    guesses = extremums
+
+    guess = np.array([(-1.0001) ** i for i in range(m**2 + 4 * m + 2)])
+    print(guesses)
 
     c = gn(fc, 1e-8, 50, guesses, guess, m)
     print(c)
+    plt.scatter(guesses, np.ones(len(guesses)))
     plot_pol(c, m)
+    print(p(c, m, l))
     plot_og(fc)
     plt.show()
+    # Can just solve it if i have same number of points as variables, then we solve interpolation.
+    # Interpolate at the points of maximum deviation of combined poly omial?
 
 
 def main():
