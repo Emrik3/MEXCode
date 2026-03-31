@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 # degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 31} # Degree 5 and 6 mults from sastre
 # dof = {2: 2, 3: 3, 4: 5, 5: 9, 6: 16}
 
-degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 31}
-dof = {2: 2, 3: 3, 4: 5, 5: 9, 6: 16}
+degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 25, 7: 41, 8: 61}
+dof = {2: 2, 3: 3, 4: 5, 5: 9, 6: 16, 7: 25, 8: 36}
 
 
 def bar_plot_dof(target_degree):
