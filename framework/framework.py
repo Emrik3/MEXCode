@@ -228,7 +228,8 @@ def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def test_approximation(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T, l)
-    np.save("coeffs.npy", coeffs17)
+    print(coeffs17)
+    np.save("coeffs.npy", [coeffs17[2]])
     x_plt = np.linspace(0, 1, 10000)
 
     x = np.linspace(0, 1, 10000)
@@ -326,7 +327,7 @@ def test_polar():
 
 def approxs():
     # test_approximation([8, 8, 8])
-    test_approximation([8, 8, 8])
+    test_approximation([8, 8, 4])
     plt.show()
 
 

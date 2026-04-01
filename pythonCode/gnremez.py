@@ -188,7 +188,7 @@ def roots(c, l, u, steps=10000):
     eps = 1e-8
 
     prev_x = xs[0]
-    prev_val = 1 - f(c, prev_x)
+    prev_val = 1 - f(c, prev_x)  # TODO: Fix this 1 to work guven the rescalar cushion
 
     for x in xs[1:]:
         curr_val = 1 - f(c, x)
@@ -365,22 +365,17 @@ def approxs():
 # Have been able to find, degree 12 in 4 mults, degree 8 in 3, degree 4 in 2.
 @torch.compile
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
-    # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
-    S = torch.linalg.svdvals(X.float())
-    print(f"Singular value range after normalization: [{S.min():.4f}, {S.max():.4f}]")
     for i in range(3):
         X = pX(coeffs_list[i], 3, X)
-        S = torch.linalg.svdvals(X.float())
-        print(f"Singular value range at iter: [{S.min():.4f}, {S.max():.4f}]")
 
     if G.size(-2) > G.size(-1):
         X = X.mT
-    return X.to(G.dtype)
+    return X
 
 
 @torch.compile
@@ -392,7 +387,6 @@ def pX(allc, m, X: torch.Tensor):
     out = torch.zeros(m + 2, n, n, dtype=X.dtype, device=X.device)
     out[0] = torch.eye(n, dtype=X.dtype, device=X.device)  # "1" as identity matrix
     out[1] = X @ X.mT
-
     A = []
     B = []
     idx = 0
@@ -406,15 +400,16 @@ def pX(allc, m, X: torch.Tensor):
         idx += k
     c = allc[idx : idx + m]
 
-    total = torch.zeros(n, n, dtype=X.dtype, device=X.device)
     for i in range(m):
         out1 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
         out2 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
         for j in range(len(A[i])):
             out1 = out1 + A[i][j] * out[j]
             out2 = out2 + B[i][j] * out[j]
+
         out[i + 2] = c[i] * (out1 @ out2)
 
+    print(c)
     return torch.sum(out, dim=0) @ X
 
 
@@ -430,6 +425,89 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
         A = X @ X.mT
         B = b * A + c * A @ A
         X = a * X + B @ X  # X <- aX + bX ˆ3 + cX ˆ5
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    return X
+
+
+co = [
+    (
+        [
+            [8.19006284e00, -1.13414979e01],
+            [5.26952866e00, -1.13557551e01, -8.55755878e00],
+            [2.99419201e-01, 3.93687364e-01, -1.36299949e-01, 8.75437928e-01],
+        ],
+        [
+            [5.72242006e00, -1.33495705e01],
+            [2.40272297e01, -6.90335422e00, -8.15817768e00],
+            [3.42806735e-02, -5.95545030e-01, -1.49974268e00, 2.87975012e00],
+        ],
+        [
+            1.26506513e-01,
+            3.60109930e-03,
+            1.89759345e00,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
+    ),
+    (
+        [
+            [1.11440745e01, -6.93968288e00],
+            [7.99906695e00, -1.52038107e01, -1.18648297e01],
+            [4.87264211e00, -5.81189185e00, -4.14955237e00, 3.76700505e00],
+        ],
+        [
+            [2.79206430e00, -1.21731802e01],
+            [1.83302276e01, -1.25959889e01, -8.58183598e00],
+            [5.45734344e-01, -6.52046697e-01, -4.88640155e-01, -3.61349369e-01],
+        ],
+        [
+            -6.70151350e-03,
+            1.32073180e-02,
+            -1.32714544e00,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
+    ),
+    (
+        [[8.18628571, -7.34995052], [0.08376457, -4.48494194, -4.06476615]],
+        [[1.33726249, -0.96757271], [-6.2348802, 0.38265358, 0.0163027]],
+        [-1.48495011, -0.04376982, 1.0, -1.0],
+    ),
+]
+# safety factor for numerical stability (but exclude last polynomial)
+"""coeffs_list = [
+    (a / 1.01, b / 1.01**3, c / 1.01**5) for (a, b, c) in coeffs_list[:-1]
+] + [coeffs_list[-1]]"""
+
+
+@torch.compile
+def MachPolar(G: torch.Tensor) -> torch.Tensor:
+    assert G.ndim >= 2
+    X = G.bfloat16()  # for speed
+    if G.size(-2) > G.size(-1):
+        X = X.mT  # this reduces FLOPs
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    n = X.shape[0]
+    t = 0
+    for m in [3, 3, 2]:
+        A = co[t][0]
+        B = co[t][1]
+        c = co[t][2]
+        t += 1
+        out = torch.zeros(m + 2, n, n, dtype=X.dtype, device=X.device)
+        out[0] = torch.eye(n, dtype=X.dtype, device=X.device)  # "1" as identity matrix
+        out[1] = X @ X.mT
+        for i in range(m):
+            out1 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
+            out2 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
+            for j in range(len(A[i])):
+                out1 = out1 + A[i][j] * out[j]
+                out2 = out2 + B[i][j] * out[j]
+
+            out[i + 2] = c[i] * (out1 @ out2)
+
+        X = torch.sum(out, dim=0) @ X
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X
@@ -475,7 +553,7 @@ def test_polar():
         # (1.875, -1.25, 0.375),  # subsequent coeffs equal this numerically
     ]
 
-    polarFactorNew = NewPolarExpress(A, T, coeffs_list)
+    polarFactorNew = NewPolarExpress(A, 3, coeffs_list)
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
 
     diffPE = polarFactor - polarFactorPE
@@ -491,11 +569,11 @@ def test_polar():
 def composite_gnremez():
     # TODO: implement a thing that find the polynomial on the form of Polset and then saves them and applies polar express to them, this seems to be stable
     # Tried for one iteration and it seemed to work
-    m = 3  # TODO: Why would too high degree make it not work?
-    l = 0.288841776000157
+    m = 2
+    l = 0.288841775959679
     u = 2 - l
 
-    fc = [np.load("coeffs.npy")[2]]
+    fc = [np.load("coeffs.npy")[0]]
     plt.show()
     extremums = []
     coeffs_for_roots = derivative_coeffs(fc[0])
@@ -519,7 +597,7 @@ def composite_gnremez():
     guesses = []
     for i in range(len(intersects)):
         guesses.append(extremums[i])
-        guesses.append(intersects[i])
+        # guesses.append(intersects[i])
     guesses.append(extremums[-1])
     print(len(guesses))
     plt.scatter(guesses, np.ones(len(guesses)))
@@ -563,7 +641,8 @@ def composite_gnremez():
         print(err)
         if err < 1e-8:
             break
-    np.save("coeffsPolsetThirdIter" + str(m) + ".npy", c)
+    print(c)
+    np.save("coeffsPolset" + str(m) + ".npy", c)
     plt.scatter(guesses, np.ones(len(guesses)))
     plot_pol(c, m)
     print(p(c, m, l))
