@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from evalPol import eval3, eval5, eval9, eval17, sastre8
-from sympy.printing.lambdarepr import k
-from sympy.series.approximants import approximants
+
+coeffs_dir = "coeffs/"
 
 
 def f(c, x):
@@ -19,11 +19,9 @@ def f(c, x):
     return x
 
 
-# TODO: Something wrong in this polynomial eval? Why does the final polynomial only look like low degree and not very high degree?
 def p(allc, m, x):
     out = np.zeros(m + 2)
-    out[0] = 1
-    out[1] = x**2
+
     A = []
     B = []
 
@@ -42,8 +40,11 @@ def p(allc, m, x):
         idx += k
 
     # Build c
-    c = allc[idx : idx + m]
+    c = allc[idx : idx + m + 2]
+    # [-0.30990275  4.5558329  -0.13127587  1.          0.        ]
 
+    out[0] = 1
+    out[1] = x**2
     # Evaluate
     for i in range(m):
         out1 = 0
@@ -53,8 +54,10 @@ def p(allc, m, x):
             out1 += A[i][j] * out[j]
             out2 += B[i][j] * out[j]
 
-        out[i + 2] += c[i] * out1 * out2
+        out[i + 2] += c[i + 2] * out1 * out2
 
+    out[0] = c[0]
+    out[1] = c[1] * out[1]
     return x * np.sum(out)
 
 
@@ -264,11 +267,11 @@ def newton_pol(x, c, tol):
     return x
 
 
-def plot_pol(c, m):
-    x = np.linspace(0, 1, 1000)
+def plot_pol(c, m, l, u):
+    x = np.linspace(l, u, 1000)
     vals = [p(c, m, xx) for xx in x]
     plt.plot(x, vals, label="New")
-    plt.plot(x, 1 + 0 * x)
+    # plt.plot(x, 1 + 0 * x)
 
 
 def plot_og(c, l, u):
@@ -284,7 +287,7 @@ def approxs():
     l = 0.001
     u = 1
 
-    fc = np.load("coeffs.npy")
+    fc = np.load(coeffs_dir + "coeffs.npy")
     print(fc)
     extremums = []
     coeffs_for_roots = derivative_coeffs(fc[0])
@@ -315,7 +318,7 @@ def approxs():
     plot_og(fc, l, u)
     plt.show()
 
-    prev_corr = np.load("coeffsPolset4.npy")
+    prev_corr = np.load(coeffs_dir + "coeffsPolset4.npy")
     print(prev_corr)
 
     guess = np.zeros(m**2 + 4 * m + 2)
@@ -347,14 +350,14 @@ def approxs():
         c, err = gn(fc, 1e-8, 50, guesses, guess, m)
         plot_og(fc, l, u)
         plt.scatter(guesses, np.ones(len(guesses)))
-        plot_pol(c, m)
+        plot_pol(c, m, l, u)
         plt.show()
         print(err)
         if err < 1e-8:
             break
-    np.save("coeffsPolset" + str(m) + ".npy", c)
+    np.save(coeffs_dir + "coeffsPolset" + str(m) + ".npy", c)
     plt.scatter(guesses, np.ones(len(guesses)))
-    plot_pol(c, m)
+    plot_pol(c, m, l, u)
     print(p(c, m, l))
     plot_og(fc, l, u)
     plt.show()
@@ -385,8 +388,7 @@ def pX(allc, m, X: torch.Tensor):
 
     # out[i] stores an (n x n) matrix, not a scalar
     out = torch.zeros(m + 2, n, n, dtype=X.dtype, device=X.device)
-    out[0] = torch.eye(n, dtype=X.dtype, device=X.device)  # "1" as identity matrix
-    out[1] = X @ X.mT
+
     A = []
     B = []
     idx = 0
@@ -398,7 +400,10 @@ def pX(allc, m, X: torch.Tensor):
         k = i + 2
         B.append(allc[idx : idx + k])
         idx += k
-    c = allc[idx : idx + m]
+    c = allc[idx : idx + m + 2]
+
+    out[0] = torch.eye(n, dtype=X.dtype, device=X.device)  # "1" as identity matrix
+    out[1] = X @ X.mT
 
     for i in range(m):
         out1 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
@@ -407,9 +412,9 @@ def pX(allc, m, X: torch.Tensor):
             out1 = out1 + A[i][j] * out[j]
             out2 = out2 + B[i][j] * out[j]
 
-        out[i + 2] = c[i] * (out1 @ out2)
-
-    print(c)
+        out[i + 2] = c[i + 2] * (out1 @ out2)
+    out[0] = c[0] * out[0]
+    out[1] = c[1] * out[1]
     return torch.sum(out, dim=0) @ X
 
 
@@ -496,7 +501,7 @@ def MachPolar(G: torch.Tensor) -> torch.Tensor:
         c = co[t][2]
         t += 1
         out = torch.zeros(m + 2, n, n, dtype=X.dtype, device=X.device)
-        out[0] = torch.eye(n, dtype=X.dtype, device=X.device)  # "1" as identity matrix
+        out[0] = torch.eye(n, dtype=X.dtype, device=X.device)
         out[1] = X @ X.mT
         for i in range(m):
             out1 = torch.zeros(n, n, dtype=X.dtype, device=X.device)
@@ -505,8 +510,9 @@ def MachPolar(G: torch.Tensor) -> torch.Tensor:
                 out1 = out1 + A[i][j] * out[j]
                 out2 = out2 + B[i][j] * out[j]
 
-            out[i + 2] = c[i] * (out1 @ out2)
-
+            out[i + 2] = c[i + 2] * (out1 @ out2)
+        out[0] = c[0] * out[0]
+        out[1] = c[1] * out[1]
         X = torch.sum(out, dim=0) @ X
     if G.size(-2) > G.size(-1):
         X = X.mT
@@ -517,9 +523,9 @@ def test_polar():
     # TODO: using 2,2,2,2,8 seems to be worse than 2,2,2,2,2 whcih makes no sence. might be an error in the sastre implementation
     # or the stability is present even when l is small
     m = 3
-    coeffs1 = np.load("coeffsPolsetFirstIter3.npy")
-    coeffs2 = np.load("coeffsPolsetSecondIter3.npy")
-    coeffs3 = np.load("coeffsPolsetThirdIter3.npy")
+    coeffs1 = np.load(coeffs_dir + "coeffsPolsetFirstIter3.npy")
+    coeffs2 = np.load(coeffs_dir + "coeffsPolsetSecondIter3.npy")
+    coeffs3 = np.load(coeffs_dir + "coeffsPolsetThirdIter3.npy")
 
     coeffs_list = [
         torch.tensor(coeffs1, dtype=torch.float32),
@@ -535,7 +541,7 @@ def test_polar():
     plt.plot(x, x_new)
     plt.show()"""
 
-    A = torch.abs(torch.randn(5000, 70))
+    A = torch.abs(torch.randn(5000, 700))
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
@@ -559,22 +565,20 @@ def test_polar():
     diffPE = polarFactor - polarFactorPE
     diffNew = polarFactor - polarFactorNew
 
-    errPE = torch.linalg.matrix_norm(diffPE, ord=2)
-    errNew = torch.linalg.matrix_norm(diffNew, ord=2)
+    rel = torch.linalg.matrix_norm(polarFactor, ord="fro")
+
+    errPE = torch.linalg.matrix_norm(diffPE, ord="fro") / rel
+    errNew = torch.linalg.matrix_norm(diffNew, ord="fro") / rel
 
     print(f"Polar Express error: {errPE}")
     print(f"New Express error: {errNew}")
 
 
-def composite_gnremez():
+def composite_gnremez(m, ii, l, u):
     # TODO: implement a thing that find the polynomial on the form of Polset and then saves them and applies polar express to them, this seems to be stable
     # Tried for one iteration and it seemed to work
-    m = 2
-    l = 0.288841775959679
-    u = 2 - l
 
-    fc = [np.load("coeffs.npy")[0]]
-    plt.show()
+    fc = [np.load(coeffs_dir + "coeffs" + str(ii) + str(m) + ".npy", allow_pickle=True)]
     extremums = []
     coeffs_for_roots = derivative_coeffs(fc[0])
     root_guess = np.roots(coeffs_for_roots)
@@ -599,13 +603,10 @@ def composite_gnremez():
         guesses.append(extremums[i])
         # guesses.append(intersects[i])
     guesses.append(extremums[-1])
-    print(len(guesses))
-    plt.scatter(guesses, np.ones(len(guesses)))
     plot_og(fc, l, u)
-    plt.show()
+    plt.scatter(guesses, np.ones(len(guesses)))
 
-    prev_corr = np.load("coeffsPolset2.npy")
-    print(prev_corr)
+    prev_corr = np.load(coeffs_dir + "coeffsPolset" + str(ii) + str(m - 1) + ".npy")
 
     guess = np.zeros(m**2 + 4 * m + 2)
     for i in range(((m - 1) ** 2 + 3 * (m - 1)) // 2):
@@ -615,6 +616,8 @@ def composite_gnremez():
         ]
     for i in range(m + 1):
         guess[-i - 2] = prev_corr[-i - 1]
+    plot_pol(guess, m, l, u)
+    plt.show()
     while True:
         guess = np.zeros(m**2 + 4 * m + 2)
         for i in range(((m - 1) ** 2 + 3 * (m - 1)) // 2):
@@ -625,37 +628,28 @@ def composite_gnremez():
         for i in range(m + 1):
             guess[-i - 2] = prev_corr[-i - 1]
         k = 0
+
         for i in range(len(guess)):
             if guess[i] == 0:
-                guess[i] = -(2 * np.random.rand()) * guess[i - 1] / np.abs(guess[i - 1])
+                guess[i] = -(np.random.rand()) * guess[i - 1] / np.abs(guess[i - 1])
                 k += 1
             if i == (m**2 + 3 * m) // 2:
                 k = 0
         guess[-1] = -guess[-2] / np.abs(guess[-2])
 
         c, err = gn(fc, 1e-8, 50, guesses, guess, m)
-        plot_og(fc, l, u)
-        plt.scatter(guesses, np.ones(len(guesses)))
-        plot_pol(c, m)
-        plt.show()
         print(err)
         if err < 1e-8:
             break
-    print(c)
-    np.save("coeffsPolset" + str(m) + ".npy", c)
-    plt.scatter(guesses, np.ones(len(guesses)))
-    plot_pol(c, m)
-    print(p(c, m, l))
-    plot_og(fc, l, u)
-    plt.show()
+    return c
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
     # approxs()
-    # composite_gnremez()
-    test_polar()
+    composite_gnremez(3, 1, 0.02, 2 - 0.02)
+    # test_polar()
 
 
 if __name__ == "__main__":

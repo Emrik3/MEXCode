@@ -1,0 +1,7 @@
+README.md
+setup.py
+MEXCODE.egg-info/PKG-INFO
+MEXCODE.egg-info/SOURCES.txt
+MEXCODE.egg-info/dependency_links.txt
+MEXCODE.egg-info/requires.txt
+MEXCODE.egg-info/top_level.txt
