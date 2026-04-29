@@ -30,8 +30,11 @@ degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 25, 7: 41, 8: 61}
 def p(c, x):
     """Evaluate odd polynomial p(x) = sum c[i] * x^(2i+1)."""
     out = 0
-    for i in range(len(c)):
-        out += c[i] * x ** (2 * i + 1)
+    x_power = x  # x^(2*0+1) = x
+    x2 = x * x
+    for ci in c:
+        out += ci * x_power
+        x_power *= x2
     return out
 
 
@@ -133,7 +136,7 @@ def plot_best_l(results):
     axes[0].set_title("Best final l per total multiplications")
     axes[0].grid(True)
 
-    bars = axes[1].bar(range(len(mults)), best_ls)
+    axes[1].bar(range(len(mults)), best_ls)
     axes[1].set_xticks(range(len(mults)))
     axes[1].set_xticklabels(
         [f"{m}\n{labels[i]}" for i, m in enumerate(mults)],
