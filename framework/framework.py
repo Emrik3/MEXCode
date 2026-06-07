@@ -1,5 +1,6 @@
 import time
 from itertools import repeat
+from pickle import APPEND
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,6 +9,11 @@ from evalPol import eval3, eval5, eval9, eval17, sastre8
 from sympy.series.approximants import approximants
 
 coeffs_dir = "coeffs/"
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 12
+plt.rcParams["axes.linewidth"] = 1.5
+plt.rc("text", usetex=False)
+plt.rc("legend", fontsize=10)
 
 
 def p(c, x):
@@ -52,7 +58,7 @@ def roots(c, l, u, steps=100000):
     return guesses
 
 
-def odd_remez(q, l, u, tol):
+def odd_remez_using_fill_non_found(q, l, u, tol):
     x = np.zeros(q + 2)
     f = np.ones(q + 2)
     n = q + 2
@@ -110,6 +116,59 @@ def odd_remez(q, l, u, tol):
                 x_new = np.insert(x_new, idx + 1, midpoint)
 
         x = x_new
+
+        # Make sure all unique points were found
+        if len(x_new) == len(set(x_new)):
+            x = np.array(x_new)
+        else:
+            print("Error: Could not find all points")
+            break
+        E = c[-1]
+
+    return c
+
+
+def odd_remez(q, l, u, tol):
+    x = np.zeros(q + 2)
+    f = np.ones(q + 2)
+    n = q + 2
+    # Calculate initial guess of points as Chebyshev points
+    for i in range(n):
+        x[i] = 0.5 * (l + u) + 0.5 * (u - l) * np.cos((i) * np.pi / (n))
+    x = np.array(sorted(x))
+    old_E = np.inf
+    E = 1000
+
+    while np.abs(old_E - E) > tol:
+        old_E = E
+        A = np.zeros((n, n))
+        for j in range(n):
+            for i in range(n - 1):
+                A[j, i] = x[j] ** (2 * i + 1)
+        A[:, -1] = (-1) ** np.arange(n)
+        c = np.linalg.solve(A, f)
+
+        x_new = []
+        coeffs_for_roots = derivative_coeffs(c[:-1])
+        root_guess = np.roots(coeffs_for_roots)
+        candidates = []
+        for r in root_guess:
+            if np.isreal(r):
+                r = r.real
+                if r > 0:
+                    candidates.append(
+                        r
+                    )  # TODO: might have to change basis for high degree polynomials cause cant find all the roots.
+        # Makes sence since we get like 0.001**41 and stuff like that.
+
+        for guess in candidates:  # If they are too close we might have problems
+            x_new.append(newton_pol(guess, c[:-1], tol))
+
+        # Always include endpoints
+        x_new = [l] + x_new + [u]
+
+        # Sort for consistency
+        x_new = np.array(sorted(x_new))
 
         # Make sure all unique points were found
         if len(x_new) == len(set(x_new)):
@@ -350,7 +409,9 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
 
     for i in range(T):
         q = q_list[i]
-        c = odd_remez(q, max(l, cushion * u), u, 1e-4)  # Make  more exact?
+        c = odd_remez_using_fill_non_found(
+            q, max(l, cushion * u), u, 1e-8
+        )  # Make  more exact?
         if cushion * u > l:
             pl = p(c[:-1], l)
             pu = p(c[:-1], u)
@@ -358,8 +419,8 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
             for i in range(len(c[:-1])):
                 c[i] *= rescalar
 
-        for i in range(len(c) - 1):
-            c[i] /= (1.01) ** (2 * i + 1)
+        # for i in range(len(c) - 1):
+        #    c[i] /= (1.01) ** (2 * i + 1)
 
         l = p(c[:-1], l)
         llist.append(l)
@@ -378,10 +439,9 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
 @torch.compile
 def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     assert G.ndim >= 2
-    X = G.bfloat16()  # for speed
+    X = G.double()  # for speed
     if G.size(-2) > G.size(-1):
         X = X.mT  # this reduces FLOPs
-    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
 
     for a, b, c in coeffs_list:
         A = X @ X.mT
@@ -396,12 +456,9 @@ def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.bfloat16()
+    X = G.double()
     if G.size(-2) > G.size(-1):
         X = X.mT
-    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
-    S = torch.linalg.svdvals(X.float())
-    print(f"Singular value range after normalization: [{S.min():.4f}, {S.max():.4f}]")
 
     for c in coeffs_list:
         if len(c) == 2:
@@ -414,8 +471,6 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
             X = eval17(X, c)
         else:
             raise NotImplementedError("This mult not impl!")
-        S = torch.linalg.svdvals(X.float())
-        print(f"Singular value range at iter: [{S.min():.4f}, {S.max():.4f}]")
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G.dtype)
@@ -425,7 +480,7 @@ def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
 def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     # TODO: accumulate in 32 bult mult in 16
     assert G.ndim >= 2
-    X = G.bfloat16()
+    X = G.double()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
@@ -449,24 +504,41 @@ def PolarTest(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
         X = X.mT
     return X.to(G.dtype)
 
+    # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
+
+
+colormap = {2: "#6298D2", 8: "#004791"}
+
 
 def test_approximation(q, l=0.001):
     T = len(q)
     coeffs17 = get_all_coeffs_different_degrees(q, T, l)
     print(coeffs17)
-    # np.save(coeffs_dir + "coeffs.npy", np.array(coeffs17, dtype=object))
+    np.save(coeffs_dir + "coeffs.npy", np.array(coeffs17, dtype=object))
     x_plt = np.linspace(0, 1, 10000)
 
     x = np.linspace(0, 1, 10000)
     tot_degree = 1
     for i in range(T):
-        x = p(coeffs17[i], x)
-        tot_degree *= 2 * q[i] + 1
-        l = p(coeffs17[i], l)
+        if i == 2:
+            x = p(coeffs17[i - 1], x)
+            tot_degree *= 2 * q[i - 1] + 1
+            l = p(coeffs17[i - 1], l)
+        else:
+            x = p(coeffs17[i], x)
+            tot_degree *= 2 * q[i] + 1
+            l = p(coeffs17[i], l)
 
-    plt.plot(x_plt, x, label=f"Total degree = {tot_degree}, d = {2 * np.array(q) + 1}")
-
-    plt.legend()
+    plt.plot(
+        x_plt,
+        x,
+        linewidth=1.5,
+        label=r"Total degree $= {}$, $d = {}$".format(
+            int(tot_degree), [int(v) for v in 2 * np.array(q) + 1]
+        ),
+        # color=colormap.get(q[0], None),
+    )
+    plt.legend(fontsize=10)
 
 
 def get_all_coeffs_different_degrees_cheb(q_list, T, l=0.001):
@@ -584,6 +656,7 @@ def test_polar():
     coeffsPE = get_all_coeffs_different_degrees(qPE, TPE)
 
     A = torch.abs(torch.randn(500, 70))  # Varför funkar det inte för stora matriser?
+    A = A / (A.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
@@ -610,15 +683,19 @@ def test_polar():
 
 
 def approxs():
-    test_approximation_cheb([2, 2, 2, 2], l=0.001)
+    test_approximation([8, 8, 8])
+    test_approximation([8, 8])
+    # test_approximation([8, 8, 8, 1])
+
+    plt.savefig("degree17lasttwice.pdf", format="pdf", bbox_inches="tight")
     plt.show()
 
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
-    approxs()
     # test_polar()
+    approxs()
 
 
 if __name__ == "__main__":

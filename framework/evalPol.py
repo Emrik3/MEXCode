@@ -4,6 +4,45 @@ import sympy as sp
 import torch
 
 
+def SP8_coeffs(b):
+    f4 = b[8]
+    c1 = b[7] / (2 * f4)
+    t2 = b[6] / f4 - c1**2
+    t1 = b[5] / f4 - c1 * t2
+    d0 = 0.25 * (1 - t2**2 + 4 * b[4] / f4 - 4 * c1 * t1)
+    e2 = 0.5 * (t2 + 1)
+    d2 = 0.5 * (t2 - 1)
+    e1 = c1 * d0 + t1 * e2 - b[3] / f4
+    d1 = t1 - e1
+    f2 = b[2] - f4 * (d0 * e2 + d1 * e1)
+    f1 = b[1] - f4 * d0 * e1
+    f0 = b[0]
+
+    r1 = d1 - 0.5 * c1 * (d2 - 0.25 * c1**2)
+    r2 = d2 - 0.25 * c1**2
+    r3 = e1 - d1 - 0.5 * c1
+    r4 = f1 - f2 * (e1 - d1)
+
+    return f0, f1, f2, f4, e1, d0, d1, d2, c1, r1, r2, r3, r4
+
+
+@torch.compile
+def SP8_eval(X, b):
+    f0, f1, f2, f4, e1, d0, d1, d2, c1, r1, r2, r3, r4 = b
+    M1 = X @ X.mT
+    I = torch.eye(M1.size(0), dtype=X.dtype, device=X.device)
+    M2 = M1 @ M1
+    M2 = M2 + 0.5 * c1 * M1
+    M3 = M2 @ M2
+    M3 = M3 + r1 * M1
+    M3 = M3 + r2 * M2
+    M2 = M2 + r3 * M1
+    M1 = r4 * M1 + f2 * M2 + f0 * I
+    M2 = M2 + M3
+    M3 = M3 + d0 * I
+    return (f4 * M2 @ M3 + M1) @ X
+
+
 def sastre8(b):
     """See Sastre Efficient evaluation of matrix polynomials"""
     assert len(b) == 9

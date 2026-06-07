@@ -2,8 +2,8 @@ from itertools import combinations_with_replacement
 
 import matplotlib.pyplot as plt
 
-degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 25, 7: 41, 8: 61}  # , 6: 25, 7: 41, 8: 61
-dof = {2: 2, 3: 3, 4: 5, 5: 9, 6: 16, 7: 25, 8: 36}  # , 6: 16, 7: 25, 8: 36
+degree_mults = {2: 3, 3: 5, 4: 9, 5: 17}  # , 6: 25, 7: 41, 8: 61
+dof = {2: 2, 3: 3, 4: 5, 5: 9}  # , 6: 16, 7: 25, 8: 36
 
 
 def combinations(total_degree):
@@ -91,11 +91,16 @@ def max_comb(max_degree):
         combo_data.sort(key=lambda x: x[1])
 
         best = combo_data[-1][0]
+        best_l = [0.0 for i in range(len(best))]
         for i in range(len(best)):
             best[i] = degree_mults[best[i]]
+        power = 1
+        for q in best:
+            power *= (q - 1) / 2 + 1
+        best_l = 1 - (1 - 0.001) ** power
 
         print(
-            f"Total multiplications: {target_degree} has the best combination of degrees {best}"
+            f"Total multiplications: {target_degree} has the best combination of degrees {best} with l = {best_l}"
         )
 
 

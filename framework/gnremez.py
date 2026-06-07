@@ -1,6 +1,7 @@
 import time
 from itertools import repeat
 from types import LambdaType
+from unittest import TestProgram
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,6 +9,11 @@ import torch
 from evalPol import eval3, eval5, eval9, eval17, sastre8
 
 coeffs_dir = "coeffs/"
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.size"] = 12
+plt.rcParams["axes.linewidth"] = 1.5
+plt.rc("text", usetex=False)
+plt.rc("legend", fontsize=10)
 
 
 def f(c, x):
@@ -54,10 +60,8 @@ def p(allc, m, x):
             out1 += A[i][j] * out[j]
             out2 += B[i][j] * out[j]
 
-        out[i + 2] += c[i + 2] * out1 * out2
+        out[i + 2] += c[i] * out1 * out2
 
-    out[0] = c[0]
-    out[1] = c[1] * out[1]
     return x * np.sum(out)
 
 
@@ -103,14 +107,10 @@ def J(zs, allc, m):
 
 
 def gn(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
-    """
-    Very sensitive to starting guess, should have starting guess be the value that is from remez maybe.
-    """
     c = c0.copy()
     err = (1 - 0.001) ** (2**m)
 
     err2 = 1000
-    prev = 100000
     while True:
         res = r(zs, c, m, fc)
         jac = J(zs, c, m)
@@ -141,7 +141,6 @@ def gn(fc, tol, max_iter, zs, c0, m, alpha0=1.0, rho=0.5, a=1e-4):
 
         if err2 < tol:
             break
-        prev = err2
 
     return c, err2
 
@@ -280,14 +279,85 @@ def plot_og(c, l, u):
     plt.plot(x, vals, label="PE")
 
 
+"""coNew = [[ 8.19006284e+00 -1.13414979e+01  5.26952866e+00 -1.13557551e+01
+ -8.55755878e+00  2.99419201e-01  3.93687364e-01 -1.36299949e-01
+  8.75437928e-01  5.72242006e+00 -1.33495705e+01  2.40272297e+01
+ -6.90335422e+00 -8.15817768e+00  3.42806735e-02 -5.95545030e-01
+ -1.49974268e+00  2.87975012e+00  1.26506513e-01  3.60109930e-03
+  1.89759345e+00 -1.00000000e+00  1.00000000e+00],
+
+]"""
+co17 = [
+    (
+        [
+            [8.19006284e00, -1.13414979e01],
+            [5.26952866e00, -1.13557551e01, -8.55755878e00],
+            [2.99419201e-01, 3.93687364e-01, -1.36299949e-01, 8.75437928e-01],
+        ],
+        [
+            [5.72242006e00, -1.33495705e01],
+            [2.40272297e01, -6.90335422e00, -8.15817768e00],
+            [3.42806735e-02, -5.95545030e-01, -1.49974268e00, 2.87975012e00],
+        ],
+        [
+            1.26506513e-01,
+            3.60109930e-03,
+            1.89759345e00,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
+    ),
+    (
+        [
+            [1.11440745e01, -6.93968288e00],
+            [7.99906695e00, -1.52038107e01, -1.18648297e01],
+            [4.87264211e00, -5.81189185e00, -4.14955237e00, 3.76700505e00],
+        ],
+        [
+            [2.79206430e00, -1.21731802e01],
+            [1.83302276e01, -1.25959889e01, -8.58183598e00],
+            [5.45734344e-01, -6.52046697e-01, -4.88640155e-01, -3.61349369e-01],
+        ],
+        [
+            -6.70151350e-03,
+            1.32073180e-02,
+            -1.32714544e00,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
+    ),
+    (
+        [
+            [1.62992507e01, -1.09165807e01],
+            [3.79130325e00, -1.20918536e01, -8.44971299e00],
+            [2.04438607e00, -2.30355479e00, -3.02265517e00, -1.78983106e00],
+        ],
+        [
+            [5.24600604e00, -1.62986125e01],
+            [2.41105188e01, -1.04430341e01, -7.06863589e00],
+            [-7.56679623e00, 4.75054075e00, 2.06561878e00, 1.86435561e00],
+        ],
+        [
+            -5.36337617e-03,
+            2.07934129e-02,
+            -5.29262448e-02,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
+    ),
+]
+
+
 def approxs():
+    # TODO: Get the old code for this with the random initial guess.
+
     # TODO: A way of finding a guess that kind of works, also can it find this or
     # do we need to give it a higher order? Cuase why would it not be able to find an approimation?
-    m = 4  # TODO: Why would too high degree make it not work?
-    l = 0.001
-    u = 1
+    m = 3  # TODO: Why would too high degree make it not work?
+    l = 0.9738946167139803
+    u = 2 - l
 
-    fc = np.load(coeffs_dir + "coeffs.npy")
+    fc = [np.load(coeffs_dir + "coeffs.npy", allow_pickle=True)[3]]
     print(fc)
     extremums = []
     coeffs_for_roots = derivative_coeffs(fc[0])
@@ -318,35 +388,14 @@ def approxs():
     plot_og(fc, l, u)
     plt.show()
 
-    prev_corr = np.load(coeffs_dir + "coeffsPolset4.npy")
+    prev_corr = np.load(coeffs_dir + "coeffsPolsetThirdIter3.npy", allow_pickle=True)
     print(prev_corr)
+    plot_pol(prev_corr, m, l, u)
+    plot_og(fc, l, u)
+    plt.show()
+    guess = prev_corr
 
-    guess = np.zeros(m**2 + 4 * m + 2)
-    for i in range(((m - 1) ** 2 + 3 * (m - 1)) // 2):
-        guess[i] = prev_corr[i]
-        guess[i + (m**2 + 3 * m) // 2] = prev_corr[
-            i + ((m - 1) ** 2 + 3 * (m - 1)) // 2
-        ]
-    for i in range(m + 1):
-        guess[-i - 2] = prev_corr[-i - 1]
     while True:
-        guess = np.zeros(m**2 + 4 * m + 2)
-        for i in range(((m - 1) ** 2 + 3 * (m - 1)) // 2):
-            guess[i] = prev_corr[i]
-            guess[i + (m**2 + 3 * m) // 2] = prev_corr[
-                i + ((m - 1) ** 2 + 3 * (m - 1)) // 2
-            ]
-        for i in range(m + 1):
-            guess[-i - 2] = prev_corr[-i - 1]
-        k = 0
-        for i in range(len(guess)):
-            if guess[i] == 0:
-                guess[i] = -(2 * np.random.rand()) * guess[i - 1] / np.abs(guess[i - 1])
-                k += 1
-            if i == (m**2 + 3 * m) // 2:
-                k = 0
-        guess[-1] = -guess[-2] / np.abs(guess[-2])
-
         c, err = gn(fc, 1e-8, 50, guesses, guess, m)
         plot_og(fc, l, u)
         plt.scatter(guesses, np.ones(len(guesses)))
@@ -355,7 +404,7 @@ def approxs():
         print(err)
         if err < 1e-8:
             break
-    np.save(coeffs_dir + "coeffsPolset" + str(m) + ".npy", c)
+    np.save(coeffs_dir + "coeffsPolsetFourthCush" + str(m) + ".npy", c)
     plt.scatter(guesses, np.ones(len(guesses)))
     plot_pol(c, m, l, u)
     print(p(c, m, l))
@@ -367,14 +416,14 @@ def approxs():
 
 # Have been able to find, degree 12 in 4 mults, degree 8 in 3, degree 4 in 2.
 @torch.compile
-def NewPolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
+def NewPolarExpress(G: torch.Tensor, steps: int) -> torch.Tensor:
     assert G.ndim >= 2
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
     for i in range(3):
-        X = pX(coeffs_list[i], 3, X)
+        X = pX(co17[i], 3, X)
 
     if G.size(-2) > G.size(-1):
         X = X.mT
@@ -413,15 +462,15 @@ def pX(allc, m, X: torch.Tensor):
             out2 = out2 + B[i][j] * out[j]
 
         out[i + 2] = c[i + 2] * (out1 @ out2)
-    out[0] = c[0] * out[0]
-    out[1] = c[1] * out[1]
+    # out[0] = c[0] * out[0]
+    # out[1] = c[1] * out[1]
     return torch.sum(out, dim=0) @ X
 
 
 @torch.compile
 def PolarExpress(G: torch.Tensor, steps: int, coeffs_list) -> torch.Tensor:
     assert G.ndim >= 2
-    X = G.bfloat16()  # for speed
+    X = G.float()  # for speed
     if G.size(-2) > G.size(-1):
         X = X.mT  # this reduces FLOPs
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
@@ -475,11 +524,28 @@ co = [
         ],
     ),
     (
-        [[8.18628571, -7.34995052], [0.08376457, -4.48494194, -4.06476615]],
-        [[1.33726249, -0.96757271], [-6.2348802, 0.38265358, 0.0163027]],
-        [-1.48495011, -0.04376982, 1.0, -1.0],
+        [
+            [1.62992507e01, -1.09165807e01],
+            [3.79130325e00, -1.20918536e01, -8.44971299e00],
+            [2.04438607e00, -2.30355479e00, -3.02265517e00, -1.78983106e00],
+        ],
+        [
+            [5.24600604e00, -1.62986125e01],
+            [2.41105188e01, -1.04430341e01, -7.06863589e00],
+            [-7.56679623e00, 4.75054075e00, 2.06561878e00, 1.86435561e00],
+        ],
+        [
+            -5.36337617e-03,
+            2.07934129e-02,
+            -5.29262448e-02,
+            -1.00000000e00,
+            1.00000000e00,
+        ],
     ),
 ]
+for i in range(len(co) - 1):
+    for j in range(len(co[i][2])):
+        co[i][2][j] /= 1.01 ** (j + 2)
 # safety factor for numerical stability (but exclude last polynomial)
 """coeffs_list = [
     (a / 1.01, b / 1.01**3, c / 1.01**5) for (a, b, c) in coeffs_list[:-1]
@@ -489,13 +555,13 @@ co = [
 @torch.compile
 def MachPolar(G: torch.Tensor) -> torch.Tensor:
     assert G.ndim >= 2
-    X = G.bfloat16()  # for speed
+    X = G.float()  # for speed
     if G.size(-2) > G.size(-1):
         X = X.mT  # this reduces FLOPs
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
     n = X.shape[0]
     t = 0
-    for m in [3, 3, 2]:
+    for m in [3, 3, 3]:
         A = co[t][0]
         B = co[t][1]
         c = co[t][2]
@@ -510,13 +576,58 @@ def MachPolar(G: torch.Tensor) -> torch.Tensor:
                 out1 = out1 + A[i][j] * out[j]
                 out2 = out2 + B[i][j] * out[j]
 
-            out[i + 2] = c[i + 2] * (out1 @ out2)
-        out[0] = c[0] * out[0]
-        out[1] = c[1] * out[1]
+            out[i + 2] = c[i] * (out1 @ out2)
         X = torch.sum(out, dim=0) @ X
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X
+
+
+def MachPolarScalarTest221(x):
+
+    t = 0
+    tt = [0, 1, 1]
+    for m in [3, 3, 3]:
+        A = co[tt[t]][0]
+        B = co[tt[t]][1]
+        c = co[tt[t]][2]
+        t += 1
+        out = np.zeros(m + 2)
+        out[0] = 1
+        out[1] = x * x
+        for i in range(m):
+            out1 = 0
+            out2 = 0
+            for j in range(len(A[i])):
+                out1 = out1 + A[i][j] * out[j]
+                out2 = out2 + B[i][j] * out[j]
+
+            out[i + 2] = c[i] * (out1 * out2)
+        x = np.sum(out) * x
+    return x
+
+
+def MachPolarScalarTest(x):
+
+    t = 0
+    for m in [3, 3]:
+        A = co[t][0]
+        B = co[t][1]
+        c = co[t][2]
+        t += 1
+        out = np.zeros(m + 2)
+        out[0] = 1
+        out[1] = x * x
+        for i in range(m):
+            out1 = 0
+            out2 = 0
+            for j in range(len(A[i])):
+                out1 = out1 + A[i][j] * out[j]
+                out2 = out2 + B[i][j] * out[j]
+
+            out[i + 2] = c[i] * (out1 * out2)
+        x = np.sum(out) * x
+    return x
 
 
 def test_polar():
@@ -527,11 +638,7 @@ def test_polar():
     coeffs2 = np.load(coeffs_dir + "coeffsPolsetSecondIter3.npy")
     coeffs3 = np.load(coeffs_dir + "coeffsPolsetThirdIter3.npy")
 
-    coeffs_list = [
-        torch.tensor(coeffs1, dtype=torch.float32),
-        torch.tensor(coeffs2, dtype=torch.float32),
-        torch.tensor(coeffs3, dtype=torch.float32),
-    ]
+    coeffs_list = co
     x = np.linspace(0, 1, 1000)
     x_new = np.zeros(1000)
     """for i in range(len(x)):
@@ -541,7 +648,7 @@ def test_polar():
     plt.plot(x, x_new)
     plt.show()"""
 
-    A = torch.abs(torch.randn(5000, 700))
+    A = torch.randn(500, 70)
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
@@ -559,7 +666,7 @@ def test_polar():
         # (1.875, -1.25, 0.375),  # subsequent coeffs equal this numerically
     ]
 
-    polarFactorNew = NewPolarExpress(A, 3, coeffs_list)
+    polarFactorNew = MachPolar(A)
     polarFactorPE = PolarExpress(A, TPE, coeffsPE)
 
     diffPE = polarFactor - polarFactorPE
@@ -648,8 +755,20 @@ def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
     # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
     # approxs()
-    composite_gnremez(3, 1, 0.02, 2 - 0.02)
     # test_polar()
+    # composite_gnremez(3, 1, 0.02, 2 - 0.02)
+    n = 1000
+    x = np.linspace(0.001, 1, n)
+    y = []
+    yNormal = []
+    for xx in x:
+        y.append(MachPolarScalarTest221(xx))
+        yNormal.append(MachPolarScalarTest(xx))
+    plt.plot(x, y, label=f"Total degree = {17 * 17 * 17}, Final Polynomial Twice")
+    plt.plot(x, yNormal, label=f"Total degree = {17 * 17}, d=[17, 17]")
+    plt.legend()
+    plt.savefig("sametwice.pdf", format="pdf", bbox_inches="tight")
+    plt.show()
 
 
 if __name__ == "__main__":

@@ -1,15 +1,3 @@
-"""
-For each total number of matrix multiplications, enumerate all multisets of
-polynomial degrees (q values from degree_mults) whose per-step multiplication
-counts sum to that total.  For every such combination, run the framework's
-get_all_coeffs_different_degrees and then propagate l_init through each fitted
-polynomial to obtain the final l value.  A larger final l means the composition
-has converged closer to sign(x)=1, i.e. less error.
-
-Usage:
-    python best_combinations.py
-"""
-
 import contextlib
 import io
 import os
@@ -24,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "framework"))
 from framework import get_all_coeffs_different_degrees  # noqa: E402
 
 # Maps polynomial degree parameter q -> number of matrix multiplications needed
-degree_mults = {2: 3, 3: 5, 4: 9, 5: 17, 6: 25, 7: 41, 8: 61}
+degree_mults = {1: 2, 2: 3, 4: 4, 8: 5}
 
 
 def p(c, x):
@@ -52,7 +40,9 @@ def combinations_by_total_mults(target_mults):
     for r in range(1, max_len + 1):
         for comb in combinations_with_replacement(q_values, r):
             if sum(degree_mults[q] for q in comb) == target_mults:
-                results.append(list(comb))
+                comb = list(comb)
+                comb.reverse()
+                results.append(comb)
     return results
 
 
@@ -66,9 +56,7 @@ def compute_final_l(q_list, l_init=0.001):
     """
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            coeffs = get_all_coeffs_different_degrees(
-                list(q_list), len(q_list), l_init
-            )
+            coeffs = get_all_coeffs_different_degrees(list(q_list), len(q_list), l_init)
         l = l_init
         for c in coeffs:
             l = float(p(c, l))
@@ -114,7 +102,7 @@ def find_best_combinations(max_target_mults=30, l_init=0.001):
             mults_per_step = [degree_mults[q] for q in best_combo]
             print(
                 f"Total mults: {target_mults:3d} | "
-                f"Best q combo: {best_combo} | "
+                f"Best degree combo: {np.array(best_combo) * 2 + 1} | "
                 f"Mults/step: {mults_per_step} | "
                 f"Final l: {best_l:.8f}"
             )
@@ -126,27 +114,27 @@ def plot_best_l(results):
     """Plot final l and the best combination label for each total mult count."""
     mults = sorted(results.keys())
     best_ls = [results[m]["best_l"] for m in mults]
-    labels = [str(results[m]["best_combo"]) for m in mults]
+    labels = [str(np.array(results[m]["best_combo"]) * 2 + 1) for m in mults]
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig, axes = plt.subplots(1, 1, figsize=(14, 5))
 
-    axes[0].plot(mults, best_ls, "o-", linewidth=1.5)
+    """axes[0].plot(mults, best_ls, "o-", linewidth=1.5)
     axes[0].set_xlabel("Total multiplications")
     axes[0].set_ylabel("Final l  (larger = less error)")
     axes[0].set_title("Best final l per total multiplications")
-    axes[0].grid(True)
+    axes[0].grid(True)"""
 
-    axes[1].bar(range(len(mults)), best_ls)
-    axes[1].set_xticks(range(len(mults)))
-    axes[1].set_xticklabels(
+    axes.bar(range(len(mults)), best_ls)
+    axes.set_xticks(range(len(mults)))
+    axes.set_xticklabels(
         [f"{m}\n{labels[i]}" for i, m in enumerate(mults)],
         rotation=45,
         ha="right",
         fontsize=7,
     )
-    axes[1].set_xlabel("Total mults  (best q combo below)")
-    axes[1].set_ylabel("Final l")
-    axes[1].set_title("Best combination per total multiplications")
+    axes.set_xlabel("Total mults  (best q combo below)")
+    axes.set_ylabel("Final l")
+    axes.set_title("Best combination per total multiplications")
 
     plt.tight_layout()
     plt.show()
@@ -156,7 +144,7 @@ def main():
     print("Searching for best degree combinations by total multiplications...")
     print("(Best = largest final l value, i.e. least approximation error)\n")
 
-    results = find_best_combinations(max_target_mults=30)
+    results = find_best_combinations(max_target_mults=20)
 
     if not results:
         print("No valid combinations found.")
@@ -167,7 +155,7 @@ def main():
         r = results[m]
         mults_per_step = [degree_mults[q] for q in r["best_combo"]]
         print(
-            f"  Total mults {m:3d}: best q = {r['best_combo']}, "
+            f"  Total mults {m:3d}: best degrees = {np.array(r['best_combo']) * 2 + 1}, "
             f"mults/step = {mults_per_step}, "
             f"final l = {r['best_l']:.8f}"
         )
