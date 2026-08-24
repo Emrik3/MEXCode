@@ -4,7 +4,9 @@ import uuid
 import warnings
 from itertools import chain, islice, repeat
 from types import LambdaType
+from itertools import chain, islice, repeat
 
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -52,19 +54,19 @@ co17 = [
     ),
     (
         [
-            [1.62992507e01, -1.09165807e01],
-            [3.79130325e00, -1.20918536e01, -8.44971299e00],
-            [2.04438607e00, -2.30355479e00, -3.02265517e00, -1.78983106e00],
+            [1.11440745e01, -6.93968288e00],
+            [7.99906695e00, -1.52038107e01, -1.18648297e01],
+            [4.87264211e00, -5.81189185e00, -4.14955237e00, 3.76700505e00],
         ],
         [
-            [5.24600604e00, -1.62986125e01],
-            [2.41105188e01, -1.04430341e01, -7.06863589e00],
-            [-7.56679623e00, 4.75054075e00, 2.06561878e00, 1.86435561e00],
+            [2.79206430e00, -1.21731802e01],
+            [1.83302276e01, -1.25959889e01, -8.58183598e00],
+            [5.45734344e-01, -6.52046697e-01, -4.88640155e-01, -3.61349369e-01],
         ],
         [
-            -5.36337617e-03,
-            2.07934129e-02,
-            -5.29262448e-02,
+            -6.70151350e-03,
+            1.32073180e-02,
+            -1.32714544e00,
             -1.00000000e00,
             1.00000000e00,
         ],
@@ -208,22 +210,22 @@ co3 = [
 
 for i in range(len(co3) - 2):
     for j in range(len(co3[i][2])):
-        co3[i][2][j] /= 1.01 ** (2 * j + 1)
+        co3[i][2][j] /= 1.01 ** (j+2)
 co3[2][0] /= 1.01
 co3[2][1] /= 1.01**3
 
 
 for i in range(len(co5) - 1):
     for j in range(len(co5[i][2])):
-        co5[i][2][j] /= 1.01 ** (2 * j + 1)
+        co5[i][2][j] /= 1.01 ** (j+2)
 
-for i in range(len(co9) - 1):
+for i in range(len(co9)):
     for j in range(len(co9[i][2])):
-        co9[i][2][j] /= 1.01 ** (2 * j + 1)
+        co9[i][2][j] /= 1.01 ** (j+2)
 
-for i in range(len(co17) - 1):
+for i in range(len(co17)):
     for j in range(len(co17[i][2])):
-        co17[i][2][j] /= 1.01 ** (2 * j + 1)
+        co17[i][2][j] /= 1.01 ** (j+2)
 
 """coeffs_list = [
     (a / 1.01, b / 1.01**3, c / 1.01**5) for (a, b, c) in coeffs_list[:-1]
@@ -241,7 +243,7 @@ def MachPolarStep(G: torch.Tensor, t: int, m: int) -> torch.Tensor:
     else:
         co = co3
     assert G.ndim >= 2
-    X = G.bfloat16()  # for speed
+    X = G.double()  # for speed
     if G.size(-2) > G.size(-1):
         X = X.mT  # this reduces FLOPs
 
@@ -398,12 +400,7 @@ def MachPolar17(G: torch.Tensor, steps: int) -> torch.Tensor:
     return X
 
 
-import os
-import uuid
-import warnings
-from itertools import chain, islice, repeat
 
-import torch
 
 # # How to generate these lists:
 # from itertools import islice
@@ -427,11 +424,27 @@ coeffs_list = [
     (a / 1.01, b / 1.01**3, c / 1.01**5) for (a, b, c) in coeffs_list[:-1]
 ] + [coeffs_list[-1]]
 
+"""The errors: 0.9740094317027953
+0.7058380515080334
+0.02137667153093792
+4.773959005888173e-15"""
+
+coeffs_normal17 = [[2.59913611e+01, -7.92828499e+02,  9.80249362e+03, -5.80808762e+04,
+        1.87004843e+05, -3.45623379e+05,  3.66229363e+05, -2.06759009e+05,
+        4.81953758e+04], [1.13780641e+01, -8.90676835e+01,  2.82604469e+02, -4.29711692e+02,
+        3.55057277e+02, -1.68403157e+02,  4.57932885e+01, -6.63459879e+00,
+        3.96878112e-01], [4.81741599,  -21.93954932,   62.52382524, -100.98701338,
+         96.18014484,  -55.02848716,   18.55832928,   -3.39555863,
+          0.25972273], [3.38374634,  -9.2632279 ,  19.95204317, -29.20942886,
+        29.07816705, -19.47356157,   8.42321182,  -2.13089728,
+         0.23994723]]
+
+
 
 @torch.compile
 def PolarExpress(G: torch.Tensor, a: float, b: float, c: float) -> torch.Tensor:
     assert G.ndim >= 2
-    X = G.bfloat16()  # for speed
+    X = G.double()  # for speed
     if G.size(-2) > G.size(-1):
         X = X.mT  # this reduces FLOPs
 
@@ -442,8 +455,35 @@ def PolarExpress(G: torch.Tensor, a: float, b: float, c: float) -> torch.Tensor:
         X = X.mT
     return X
 
+@torch.compile
+def PolarTest(G: torch.Tensor, coeffs) -> torch.Tensor:
+    # TODO: accumulate in 32 bult mult in 16
+    assert G.ndim >= 2
+    X = G.double()
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    for i in range(len(coeffs) - 1):
+        coeffs[i] /= 1.01 ** (2 * i + 1)
+    a, b, c, d, e, f, g, h, i = coeffs
+    A = X @ X.mT
+    B = (
+        b * A
+        + c * A @ A
+        + d * A @ A @ A
+        + e * A @ A @ A @ A
+        + f * A @ A @ A @ A @ A
+        + g * A @ A @ A @ A @ A @ A
+        + h * A @ A @ A @ A @ A @ A @ A
+        + i * A @ A @ A @ A @ A @ A @ A @ A
+    )
+    X = a * X + B @ X
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    return X.to(G.dtype)
 
-def synthetic_matrix(m, n, smallest=1e-3, largest=1.0, device="cpu"):
+
+def synthetic_matrix(m, n, smallest=1e-3, largest=1e-3, device="cpu"):
     k = min(m, n)
 
     # Random orthogonal U
@@ -470,12 +510,12 @@ def synthetic_matrix(m, n, smallest=1e-3, largest=1.0, device="cpu"):
 
 def synthetic_plots():
     # TODO: Just using degree 5 after 4 iters of degree 17.
-    A, s = synthetic_matrix(500, 70)
+    A, s = synthetic_matrix(50, 7)
 
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
     polarFactor = U @ Vh
 
-    sastreCoeffs = []
+
 
     A17 = A.clone()
     APE = A.clone()
@@ -486,30 +526,107 @@ def synthetic_plots():
 
     spec17 = [1]
     specPE = [1]
-    m_list = [3, 3, 0, 0]
-    for i in range(4):
+    m_list=[3,3,2]
+    for i in range(3):
         A17 = MachPolarStep(A17, i, m_list[i])
-        spec17.append(torch.linalg.matrix_norm(A17 - polarFactor, ord=2))
+        spec17.append(torch.linalg.matrix_norm(A17 - polarFactor, ord=2)/ torch.linalg.matrix_norm(polarFactor, ord=2))
 
     for i in range(5):
         a = coeffs_list[i][0]
         b = coeffs_list[i][1]
         c = coeffs_list[i][2]
         APE = PolarExpress(APE, a, b, c)
-        specPE.append(torch.linalg.matrix_norm(APE - polarFactor, ord=2))
+        specPE.append(torch.linalg.matrix_norm(APE - polarFactor, ord=2)/ torch.linalg.matrix_norm(polarFactor, ord=2))
 
-    plt.plot(
-        [0, 5, 10, 12, 14], spec17, label="Approximation with degrees 17, 17, 3, 3"
-    )
+    plt.plot([0, 5, 10, 15], spec17, label="Approximation with degrees 17, 17, 17")
     plt.plot([0, 3, 6, 9, 12, 15], specPE, label="Polar Express")
     plt.xlabel("Matrix-Matrix Multiplications")
-    plt.ylabel("Spectral Error")
+    plt.ylabel("Relative Frobenius Error")
+    plt.legend()
+    plt.show()
+
+from17to5 = [[2.65705496/ 1.01, -1.97367367/1.01**3,  0.45223007/1.01**5], [ 1.95502978 / 1.01, -1.33631062/1.01**3,  0.38373029/1.01**5], [ 1.89538159 / 1.01, -1.29109485 / 1.01**3,  0.39571404 / 1.01**5], [ 1.87499975 / 1.01, -1.24999949 / 1.01**3,  0.37499975 / 1.01**5]]
+def real_plots():
+    A = torch.load("h3_c_attn_grads.pt", map_location="cpu")
+    if not torch.is_tensor(A):
+        # in case it's saved as a state_dict / dict of tensors
+        raise ValueError("Loaded object is not a tensor — inspect its structure first")
+    A = A.float()
+    if A.ndim > 2:
+        # flatten any leading batch/head dims down to a single 2D matrix
+        A = A.reshape(-1, A.shape[-1])
+
+    U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+    polarFactor = U @ Vh
+
+    A17 = A.clone()
+    APE = A.clone()
+
+    A17 = A17 / (A17.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    APE = APE / (APE.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+
+    spec17 = [1]
+    specPE = [1]
+    m_list=[3,3,2]
+    for i in range(3):
+        A17 = MachPolarStep(A17, i, m_list[i])
+        spec17.append(torch.linalg.matrix_norm(A17 - polarFactor, ord="fro")/ torch.linalg.matrix_norm(polarFactor, ord="fro"))
+
+    for i in range(5):
+        if i >= 4:
+            a = 1.875
+            b = -1.25
+            c = 0.375
+        else:
+            a = from17to5[i][0]
+            b = from17to5[i][1]
+            c = from17to5[i][2]
+        A17 = PolarExpress(A17, a, b, c)
+        spec17.append(torch.linalg.matrix_norm(A17 - polarFactor, ord="fro") / torch.linalg.matrix_norm(polarFactor, ord="fro"))
+
+    for i in range(10):
+        if i >= 7:
+            a = 1.875
+            b = -1.25
+            c = 0.375
+        else:
+            a = coeffs_list[i][0]
+            b = coeffs_list[i][1]
+            c = coeffs_list[i][2]
+        APE = PolarExpress(APE, a, b, c)
+        specPE.append(torch.linalg.matrix_norm(APE - polarFactor, ord="fro") / torch.linalg.matrix_norm(polarFactor, ord="fro"))
+
+    plt.plot([0, 5, 10, 14, 17, 20, 23, 26, 29], spec17, label="Approximation with degrees 17, 17, 17")
+    plt.plot([3*i for i in range(11)], specPE, label="Polar Express")
+    plt.xlabel("Matrix-Matrix Multiplications")
+    plt.ylabel("Relative Frobenius Error")
     plt.legend()
     plt.show()
 
 
 def main():
-    synthetic_plots()
+    real_plots()
+    m_list=[3,3,2]
+    A17,s = synthetic_matrix(1,1)
+    for i in range(3):
+
+        A17 = MachPolarStep(A17, i, m_list[i])
+        print(A17)
+    APE,s = synthetic_matrix(1,1)
+
+    for i in range(10):
+        if i >= 7:
+            a = 1.875
+            b = -1.25
+            c = 0.375
+        else:
+            a = coeffs_list[i][0]
+            b = coeffs_list[i][1]
+            c = coeffs_list[i][2]
+        APE = PolarExpress(APE, a, b, c)
+        print(APE)
+
+    #real_plots()
 
 
 main()

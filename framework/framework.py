@@ -146,7 +146,13 @@ def odd_remez(q, l, u, tol):
             for i in range(n - 1):
                 A[j, i] = x[j] ** (2 * i + 1)
         A[:, -1] = (-1) ** np.arange(n)
-        c = np.linalg.solve(A, f)
+        try:
+            c = np.linalg.solve(A, f)
+        except np.linalg.LinAlgError:
+            if q == 2:
+                return [1.875, -1.25, 0.375, 0]
+            else:
+                raise np.linalg.LinAlgError("Singular Matrix")
 
         x_new = []
         coeffs_for_roots = derivative_coeffs(c[:-1])
@@ -400,7 +406,7 @@ def plot_pol(c, l, u):
 # Maybe just do any degree not using this?
 def get_all_coeffs_different_degrees(q_list, T, l=0.001):
     cushion = 0.02407327424182761
-    cushion = 0
+    #cushion = 0
     u = 1
     all_coeffs = []
     eps = 1e-10
@@ -408,8 +414,11 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
     k = 1
 
     for i in range(T):
+        if 1-l <= 1e-9:
+            all_coeffs.append( [1.875, -1.25, 0.375])
+            continue
         q = q_list[i]
-        c = odd_remez_using_fill_non_found(
+        c = odd_remez(
             q, max(l, cushion * u), u, 1e-8
         )  # Make  more exact?
         if cushion * u > l:
@@ -419,20 +428,21 @@ def get_all_coeffs_different_degrees(q_list, T, l=0.001):
             for i in range(len(c[:-1])):
                 c[i] *= rescalar
 
-        # for i in range(len(c) - 1):
+        #for i in range(len(c) - 1):
         #    c[i] /= (1.01) ** (2 * i + 1)
 
         l = p(c[:-1], l)
         llist.append(l)
         x = np.linspace(l, u, 1000)
 
-        u = np.max(p(c[:-1], x))
+        u = 2-l
 
         all_coeffs.append(c[:-1])
         if len(llist) > 1:
-            print(l)
-            # print((1 - llist[k]) / (1 - llist[k - 1]) ** (q + 1))
+            print(1 - l)
+            # print((1 - llist[np.max(p(c[:-1], x))k]) / (1 - llist[k - 1]) ** (q + 1))
         k += 1
+
     return all_coeffs
 
 
@@ -520,16 +530,12 @@ def test_approximation(q, l=0.001):
     x = np.linspace(0, 1, 10000)
     tot_degree = 1
     for i in range(T):
-        if i == 2:
-            x = p(coeffs17[i - 1], x)
-            tot_degree *= 2 * q[i - 1] + 1
-            l = p(coeffs17[i - 1], l)
-        else:
-            x = p(coeffs17[i], x)
-            tot_degree *= 2 * q[i] + 1
-            l = p(coeffs17[i], l)
+        x = p(coeffs17[i], x)
+        tot_degree *= 2 * q[i] + 1
+        l = p(coeffs17[i], l)
 
-    plt.plot(
+    real_plots(coeffs17, q)
+    """plt.plot(
         x_plt,
         x,
         linewidth=1.5,
@@ -538,7 +544,7 @@ def test_approximation(q, l=0.001):
         ),
         # color=colormap.get(q[0], None),
     )
-    plt.legend(fontsize=10)
+    plt.legend(fontsize=10)"""
 
 
 def get_all_coeffs_different_degrees_cheb(q_list, T, l=0.001):
@@ -681,20 +687,91 @@ def test_polar():
     print(f"Polar Express error: {errPE}")
     print(f"New Express error: {errNew}")
 
+def real_plots(coeffs, q_list):
+    A = torch.load("h3_c_attn_grads.pt", map_location="cpu")
+    if not torch.is_tensor(A):
+        # in case it's saved as a state_dict / dict of tensors
+        raise ValueError("Loaded object is not a tensor — inspect its structure first")
+    A = A.double()
+    if A.ndim > 2:
+        # flatten any leading batch/head dims down to a single 2D matrix
+        A = A.reshape(-1, A.shape[-1])
+
+    U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+    polarFactor = U @ Vh
+
+    A17 = A.mT.clone()
+    APE = A.mT.clone()
+
+    A17 = A17 / (A17.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+    APE = APE / (APE.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-7)
+
+    spec17 = [1]
+    specPE = [1]
+
+    for i in range(len(coeffs)):
+        APE = APE*0
+        for j in range(len(coeffs[i])):
+
+            APE = APE + coeffs[i][j] * torch.linalg.matrix_power(A17@A17.mT, j) @ A17
+        A17 = APE.clone()
+        specPE.append(torch.linalg.matrix_norm(A17.mT - polarFactor, ord="fro") / torch.linalg.matrix_norm(polarFactor, ord="fro"))
+
+
+    q_to_mult = {1: 2, 2: 3, 4: 4, 8: 5, 12: 6}
+
+    mults = [0]
+    for q in q_list:
+        mults.append(mults[-1] + q_to_mult[q])
+
+    if q_list[0] == 2:
+        lab = "Polar Express"
+    else:
+        lab = "Proposed New Method"
+    plt.plot(
+        mults,
+        specPE,
+        linewidth=3,
+        marker="o",
+        markersize=7,
+        markeredgecolor="white",
+        markeredgewidth=1.5,
+        label=lab,
+    )
+
+    plt.xlabel("Matrix-Matrix Multiplications", fontsize=14)
+    plt.ylabel("Relative Frobenius Error", fontsize=14)
+
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
+    plt.grid(True, alpha=0.25)
+    plt.ylim(0, 1.05)
+
+    ax = plt.gca()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.legend(frameon=False, fontsize=11)
+    plt.tight_layout()
+    plt.savefig("gradient_matrix_error.pdf", format="pdf", bbox_inches="tight")
+
+
 
 def approxs():
-    test_approximation([8, 8, 8])
-    test_approximation([8, 8])
+    plt.figure(figsize=(6.2, 4.0), dpi=150)
+
+    test_approximation([2,2,2,2,2,2, 2,2,2,2,2,2])
+    test_approximation([8,8,8,8,2,2,2,2,2])
+    #test_approximation([8,8,4,4,2,2,2,2,2])
+    #test_approximation([2,2,2,2,2,2,2,2,2,2,2,2])
     # test_approximation([8, 8, 8, 1])
 
-    plt.savefig("degree17lasttwice.pdf", format="pdf", bbox_inches="tight")
+    # plt.savefig("degree17lasttwice.pdf", format="pdf", bbox_inches="tight")
     plt.show()
 
 
 def main():
-    # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
-    # TODO: Have some issues when using degree 3, since only one point it is not working correctly, change to just have exact solution when it is of degree 3.
-    # test_polar()
     approxs()
 
 
