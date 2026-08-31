@@ -401,14 +401,6 @@ def MachPolar17(G: torch.Tensor, steps: int) -> torch.Tensor:
 
 
 
-
-# # How to generate these lists:
-# from itertools import islice
-# from matsign.methods import OursFixedL, Ours
-# hs = list(OursFixedL(l=1e-3, cushion=1e-1, center_squred_svs=False, max_iters=10)(1e-3))  # centered
-# hs = list(islice(Ours(cushion=1e-1, center_squred_svs=False).uncentered_sequence(1e-3), 10))  # uncentered
-# [tuple(float(x) for x in h.coef) for h in hs]
-
 coeffs_list = [
     (8.28721201814563, -23.595886519098837, 17.300387312530933),
     (4.107059111542203, -2.9478499167379106, 0.5448431082926601),
@@ -424,10 +416,6 @@ coeffs_list = [
     (a / 1.01, b / 1.01**3, c / 1.01**5) for (a, b, c) in coeffs_list[:-1]
 ] + [coeffs_list[-1]]
 
-"""The errors: 0.9740094317027953
-0.7058380515080334
-0.02137667153093792
-4.773959005888173e-15"""
 
 coeffs_normal17 = [[2.59913611e+01, -7.92828499e+02,  9.80249362e+03, -5.80808762e+04,
         1.87004843e+05, -3.45623379e+05,  3.66229363e+05, -2.06759009e+05,
@@ -509,7 +497,6 @@ def synthetic_matrix(m, n, smallest=1e-3, largest=1e-3, device="cpu"):
 
 
 def synthetic_plots():
-    # TODO: Just using degree 5 after 4 iters of degree 17.
     A, s = synthetic_matrix(50, 7)
 
     U, S, Vh = torch.linalg.svd(A, full_matrices=False)
@@ -545,8 +532,10 @@ def synthetic_plots():
     plt.legend()
     plt.show()
 
+
 from17to5 = [[2.65705496/ 1.01, -1.97367367/1.01**3,  0.45223007/1.01**5], [ 1.95502978 / 1.01, -1.33631062/1.01**3,  0.38373029/1.01**5], [ 1.89538159 / 1.01, -1.29109485 / 1.01**3,  0.39571404 / 1.01**5], [ 1.87499975 / 1.01, -1.24999949 / 1.01**3,  0.37499975 / 1.01**5]]
 def real_plots():
+    """Error when using a matrix from the GPT training."""
     A = torch.load("h3_c_attn_grads.pt", map_location="cpu")
     if not torch.is_tensor(A):
         # in case it's saved as a state_dict / dict of tensors

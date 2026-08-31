@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: MEXCODE
-Version: 0.1
-Requires-Dist: torch
-Requires-Dist: pandas
-Requires-Dist: matplotlib
-Requires-Dist: numpy
-Requires-Dist: pathlib
-Dynamic: requires-dist
