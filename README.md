@@ -14,3 +14,5 @@ Main components:
   - Gauss-Newton coefficient fitting and additional polynomial evaluation experiments
 - `framework/matrix_testing.py`
   - matrix-level testing/benchmarking utilities for different polynomial compositions
+
+See <https://github.com/Emrik3/GPT-test> for neural network implementation.
