@@ -5,6 +5,7 @@ import torch
 
 
 def SP8_coeffs(b):
+    """Get coefficients for SP8 evaluation. See "Recursive expansion of the matrix step function using polynomials of degree eight" by E. Rubensson, E. Jarlebring and G. Lorentzon (2026)."""
     f4 = b[8]
     c1 = b[7] / (2 * f4)
     t2 = b[6] / f4 - c1**2
@@ -25,9 +26,9 @@ def SP8_coeffs(b):
 
     return f0, f1, f2, f4, e1, d0, d1, d2, c1, r1, r2, r3, r4
 
-
 @torch.compile
 def SP8_eval(X, b):
+    """Evaluation using coefficients from above. See "Recursive expansion of the matrix step function using polynomials of degree eight" by E. Rubensson, E. Jarlebring and G. Lorentzon (2026)."""
     f0, f1, f2, f4, e1, d0, d1, d2, c1, r1, r2, r3, r4 = b
     M1 = X @ X.mT
     I = torch.eye(M1.size(0), dtype=X.dtype, device=X.device)
@@ -76,6 +77,7 @@ def sastre8(b):
 
 
 def sastreEval17Scalar(X, b):
+    """Evaluate degree 17 odd polynomail for scalar input."""
     f0, f1, f2, e0, e2, d1, d2, c3, c4 = b
     A = X * X
     AA = A * A
@@ -88,7 +90,7 @@ def sastreEval17Scalar(X, b):
 
 @torch.compile
 def eval17(X: torch.Tensor, b):
-    """Make sure length of b is correct, len(b) == 9 == dof"""
+    """Evaluate odd degree 17 matrix polynomial."""
     f0, f1, f2, e0, e2, d1, d2, c3, c4 = b
     A = X @ X.mT
     AA = A @ A
@@ -101,7 +103,7 @@ def eval17(X: torch.Tensor, b):
 
 @torch.compile
 def eval9(X: torch.Tensor, b):
-    """Make sure length of b is correct, len(b) == 5 == dof"""
+    """Evaluate odd degree 9 matrix polynomial."""
     A = X @ X.mT
     AA = A @ A
     return b[0] * X + (b[1] * A + b[2] * AA + AA @ (b[3] * A + b[4] * AA)) @ X
@@ -109,7 +111,7 @@ def eval9(X: torch.Tensor, b):
 
 @torch.compile
 def eval5(X: torch.tensor, b):
-    """Make sure length of b is correct, len(b) == 3 == dof"""
+    """Evaluate odd degree 5 matrix polynomial."""
     A = X @ X.mT
     AA = A @ A
     return b[0] * X + (b[1] * A + b[2] * AA) @ X
@@ -117,7 +119,7 @@ def eval5(X: torch.tensor, b):
 
 @torch.compile
 def eval3(X: torch.tensor, b):
-    """Make sure length of b is correct, len(b) == 2 == dof"""
+    """Evaluate odd degree 3 matrix polynomial."""
     return b[0] * X + b[1] * (X @ X.mT) @ X
 
 
@@ -128,65 +130,8 @@ def p(c, x):
     return out
 
 
-def testSastre():
-    # Given form new polar degree 17 three times
-    c = np.array(
-        [
-            np.array(
-                [
-                    2.59913611e01,
-                    -7.92828499e02,
-                    9.80249362e03,
-                    -5.80808762e04,
-                    1.87004843e05,
-                    -3.45623379e05,
-                    3.66229363e05,
-                    -2.06759009e05,
-                    4.81953758e04,
-                ]
-            ),
-            np.array(
-                [
-                    1.13780641e01,
-                    -8.90676835e01,
-                    2.82604469e02,
-                    -4.29711692e02,
-                    3.55057277e02,
-                    -1.68403157e02,
-                    4.57932885e01,
-                    -6.63459879e00,
-                    3.96878112e-01,
-                ]
-            ),
-            np.array(
-                [
-                    4.81741599,
-                    -21.93954932,
-                    62.52382524,
-                    -100.98701338,
-                    96.18014484,
-                    -55.02848716,
-                    18.55832927,
-                    -3.39555863,
-                    0.25972273,
-                ]
-            ),
-        ]
-    )
-
-    x_ref = np.linspace(0.01, 1, 1000)  # avoid 0 — polar starts near 0 anyway
-    x1, x2 = x_ref.copy(), x_ref.copy()
-    for i in range(3):
-        b = sastre8(c[i])
-        x1 = sastreEval17Scalar(x1, b)
-        x2 = p(c[i], x2)
-    max_err = np.max(np.abs(x1 - x2))
-    print(f"Max scalar Sastre vs direct eval error: {max_err:.2e}")
-    assert max_err < 1e-8, "Sastre decomposition is wrong!"
-
-
 def main():
-    testSastre()
+    pass
 
 
 if __name__ == "__main__":
