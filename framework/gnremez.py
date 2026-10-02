@@ -49,6 +49,10 @@ def p(allc, m, x):
     c = allc[idx : idx + m + 2]
     # [-0.30990275  4.5558329  -0.13127587  1.          0.        ]
 
+    print(A)
+    print(B)
+    print(c)
+    
     out[0] = 1
     out[1] = x**2
     # Evaluate
@@ -340,16 +344,34 @@ co17 = [
             1.00000000e00,
         ],
     ),
+    (
+        [
+            [ 16.03157411, -11.14749849], 
+            [  4.20269582, -11.9504506 ,  -8.13135419], 
+            [ 2.58038016, -1.64768362, -2.80261544, -1.93489044]],
+        [
+            [  5.11050101, -16.44733755], 
+            [24.32315051, -9.71831946, -7.30933037], 
+            [-7.59941042,  4.78196663,  1.65890106,  1.79802176]
+        ],
+        [
+            -0.00364704,  
+            0.01956071,
+            -0.03524793, 
+            -1.,          
+            1.        
+        ]
+    )
 ]
 
 
 def approxs():
     """Find polynomial to be evaluated afficently."""
     m = 3 # d = 2^m
-    l = 0.9738946167139803 
-    u = 2 - l
+    l = 1 - 4.773959005888173e-15
+    u = 2-l
 
-    fc = [np.load(coeffs_dir + "coeffs.npy", allow_pickle=True)[3]]
+    fc = [np.load(coeffs_dir + "coeffs.npy", allow_pickle=True)[4]]
     print(fc)
     extremums = []
     coeffs_for_roots = derivative_coeffs(fc[0])
@@ -371,7 +393,7 @@ def approxs():
     extremums = np.array(sorted(extremums))
     intersects = roots(fc, l, u)
     guesses = []
-    for i in range(len(intersects)):
+    for i in range(len(extremums)):
         guesses.append(extremums[i])
         guesses.append(intersects[i])
     guesses.append(extremums[-1])
@@ -380,7 +402,7 @@ def approxs():
     plot_og(fc, l, u)
     plt.show()
 
-    prev_corr = np.load(coeffs_dir + "coeffsPolsetThirdIter3.npy", allow_pickle=True)
+    prev_corr = np.load(coeffs_dir + "coeffsPolsetFourthIterNew3.npy", allow_pickle=True)
     print(prev_corr)
     plot_pol(prev_corr, m, l, u)
     plot_og(fc, l, u)
@@ -396,10 +418,11 @@ def approxs():
         print(err)
         if err < 1e-8:
             break
-    np.save(coeffs_dir + "coeffsPolsetFourthCush" + str(m) + ".npy", c)
+    np.save(coeffs_dir + "coeffsPolsetFifthIter" + str(m) + ".npy", c)
     plt.scatter(guesses, np.ones(len(guesses)))
     plot_pol(c, m, l, u)
     print(p(c, m, l))
+    print(c)
     plot_og(fc, l, u)
     plt.show()
 
@@ -671,24 +694,60 @@ def test_polar():
     print(f"Polar Express error: {errPE}")
     print(f"New Express error: {errNew}")
 
+def plot_triplet(cc, l, u):
+    m = 3
+    xx = np.linspace(l, u, 1000)
+
+    A = cc[0]
+    B = cc[1]
+    c = cc[2]
+
+    for x in xx:
+        out = np.zeros(m + 2)
+        out[0] = 1
+        out[1] = x**2
+        # Evaluate
+        for i in range(m):
+            out1 = 0
+            out2 = 0
+
+            for j in range(len(A[i])):
+                out1 += A[i][j] * out[j]
+                out2 += B[i][j] * out[j]
+
+            out[i + 2] += c[i] * out1 * out2
+
+        plt.plot(x, x * np.sum(out), '*')
+    plt.show()
+    
 
 def main():
     # TODO: Some issues with the convergence of newton when the tol is too high, for large polynomials it does not converge.
-    # approxs()
+    #approxs()
     # test_polar()
     # composite_gnremez(3, 1, 0.02, 2 - 0.02)
-    n = 1000
-    x = np.linspace(0.001, 1, n)
-    y = []
-    yNormal = []
-    for xx in x:
-        y.append(MachPolarScalarTest221(xx))
-        yNormal.append(MachPolarScalarTest(xx))
-    plt.plot(x, y, label=f"Total degree = {17 * 17 * 17}, Final Polynomial Twice")
-    plt.plot(x, yNormal, label=f"Total degree = {17 * 17}, d=[17, 17]")
-    plt.legend()
-    plt.savefig("sametwice.pdf", format="pdf", bbox_inches="tight")
-    plt.show()
+    #plot_pol(coeffs_no_cushion, 3, 0.001, 1)
+    #plt.show()
+    ccc5 = np.load("coeffs/coeffsPolsetFifthIter3.npy", allow_pickle=True)
+    ccc4 = np.load("coeffs/coeffsPolsetFourthIterNew3.npy", allow_pickle=True)
+    ccc3 = np.load("coeffs/coeffsPolsetThirdIter3.npy", allow_pickle=True)
+    ccc2 = np.load("coeffs/coeffsPolsetSecondIter3.npy", allow_pickle=True)
+    ccc1 = np.load("coeffs/coeffsPolsetFirstIter3.npy", allow_pickle=True)
+    np.set_printoptions(
+    threshold=np.inf,
+    precision=17,
+    suppress=False)
+    print(ccc1)
+    print(ccc2)
+    print(ccc3)
+    print(ccc4)
+    print(ccc5)
+    """l = 1-0.02137667153093792
+    u = 2-l
+    plot_pol(ccc, 3, l, u)
+    plt.show()"""
+
+
 
 
 if __name__ == "__main__":
